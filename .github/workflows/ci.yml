@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Verify Module Dependencies
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Run Unit Tests
+        run: go test -v -race ./...
+
+      - name: Build Binary
+        run: make build
+
+      - name: Verify Standalone Execution
+        run: |
+          ./bin/possum version
+          ./bin/possum rules list --service s3
+          ./bin/possum rules frameworks

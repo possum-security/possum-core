@@ -1,0 +1,42 @@
+project_name: possum
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: possum-cli
+    main: ./cmd/possum
+    binary: possum
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/possum-sec/possum/pkg/version.Version={{.Version}} -X github.com/possum-sec/possum/pkg/version.GitCommit={{.Commit}} -X github.com/possum-sec/possum/pkg/version.BuildDate={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+brews:
+  - repository:
+      owner: possum-sec
+      name: homebrew-tap
+    homepage: "https://possum.io"
+    description: "Developer-First FinSecOps Cloud Security & Waste Scanner"
+    license: "Non-Commercial"
+
+dockers:
+  - image_templates:
+      - "possumsec/possum:{{ .Version }}"
+      - "possumsec/possum:latest"
+    dockerfile: Dockerfile
