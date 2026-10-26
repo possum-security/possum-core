@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/possum-sec/possum/pkg/version"
+	"github.com/amirmahdy/possum-core/pkg/version"
 	"github.com/spf13/cobra"
 )
 

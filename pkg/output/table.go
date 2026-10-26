@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/possum-sec/possum/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/model"
 )
 
 // ANSI color escape codes

@@ -3,7 +3,7 @@ package cloudclient
 import (
 	"time"
 
-	"github.com/possum-sec/possum/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/model"
 )
 
 // ClientInfo details the CLI runner environment.

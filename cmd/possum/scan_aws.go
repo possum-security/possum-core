@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/possum-sec/possum/pkg/cloudclient"
-	"github.com/possum-sec/possum/pkg/model"
-	"github.com/possum-sec/possum/pkg/output"
-	"github.com/possum-sec/possum/pkg/scanner"
-	scanneraws "github.com/possum-sec/possum/pkg/scanner/aws"
+	"github.com/amirmahdy/possum-core/pkg/cloudclient"
+	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/output"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
+	scanneraws "github.com/amirmahdy/possum-core/pkg/scanner/aws"
 	"github.com/spf13/cobra"
 )
 

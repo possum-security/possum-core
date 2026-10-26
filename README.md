@@ -3,7 +3,7 @@
 > **Developer-First Cloud Security & FinOps Scanner**  
 > Unifying Cloud Security Posture and Cost Optimization.
 
-[![CI](https://github.com/possum-sec/possum/actions/workflows/ci.yml/badge.svg)](https://github.com/possum-sec/possum/actions)
+[![CI](https://github.com/amirmahdy/possum-core/actions/workflows/ci.yml/badge.svg)](https://github.com/amirmahdy/possum-core/actions)
 [![License](https://img.shields.io/badge/License-Non--Commercial-blue.svg)](LICENSE)
 
 Possum is a zero-dependency, single-binary CLI engine designed to detect security misconfigurations and cloud financial waste in CI/CD and developer environments.
@@ -19,7 +19,7 @@ Possum is a zero-dependency, single-binary CLI engine designed to detect securit
 brew install possum-sec/tap/possum
 
 # Via Go install
-go install github.com/possum-sec/possum/cmd/possum@latest
+go install github.com/amirmahdy/possum-core/cmd/possum@latest
 
 # Direct Download
 curl -sSfL https://raw.githubusercontent.com/possum-sec/possum/main/install.sh | sh

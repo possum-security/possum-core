@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/possum-sec/possum/pkg/scanner/aws/secaas"
+	"github.com/amirmahdy/possum-core/pkg/scanner/aws/secaas"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"

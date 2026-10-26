@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/possum-sec/possum/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/model"
 )
 
 func TestBuildBundle(t *testing.T) {

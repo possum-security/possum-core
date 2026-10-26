@@ -18,7 +18,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X github.com/possum-sec/possum/pkg/version.Version={{.Version}} -X github.com/possum-sec/possum/pkg/version.GitCommit={{.Commit}} -X github.com/possum-sec/possum/pkg/version.BuildDate={{.Date}}
+      - -s -w -X github.com/amirmahdy/possum-core/pkg/version.Version={{.Version}} -X github.com/amirmahdy/possum-core/pkg/version.GitCommit={{.Commit}} -X github.com/amirmahdy/possum-core/pkg/version.BuildDate={{.Date}}
 
 archives:
   - format: tar.gz
@@ -29,7 +29,7 @@ archives:
 
 brews:
   - repository:
-      owner: possum-sec
+      owner: amirmahdy
       name: homebrew-tap
     homepage: "https://possum.io"
     description: "Developer-First FinSecOps Cloud Security & Waste Scanner"

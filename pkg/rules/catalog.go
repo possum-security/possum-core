@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/possum-sec/possum/pkg/rules/embedded"
+	"github.com/amirmahdy/possum-core/pkg/rules/embedded"
 )
 
 type rawIndexFile struct {

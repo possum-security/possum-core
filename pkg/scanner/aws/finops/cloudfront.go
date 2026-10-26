@@ -3,7 +3,7 @@ package finops
 import (
 	"context"
 
-	"github.com/possum-sec/possum/pkg/scanner"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"

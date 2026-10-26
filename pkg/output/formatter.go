@@ -3,7 +3,7 @@ package output
 import (
 	"io"
 
-	"github.com/possum-sec/possum/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/model"
 )
 
 // Formatter defines the contract for rendering scan results.

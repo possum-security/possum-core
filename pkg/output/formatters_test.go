@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/possum-sec/possum/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/model"
 )
 
 func sampleResults() []model.ScanResult {

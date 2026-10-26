@@ -35,4 +35,4 @@ jobs:
         run: |
           ./bin/possum version
           ./bin/possum rules list --service s3
-          ./bin/possum rules frameworks
+          ./bin/possum rules get s3_bucket_level_public_access_block

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/possum-sec/possum/pkg/model"
-	"github.com/possum-sec/possum/pkg/version"
+	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/version"
 )
 
 // Client handles communication with the Possum SecaaS Platform.

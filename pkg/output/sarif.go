@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/possum-sec/possum/pkg/model"
-	"github.com/possum-sec/possum/pkg/version"
+	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/version"
 )
 
 // SARIFReport represents OASIS SARIF v2.1.0 schema root.

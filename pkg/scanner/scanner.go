@@ -3,7 +3,7 @@ package scanner
 import (
 	"context"
 
-	"github.com/possum-sec/possum/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/model"
 )
 
 // Type aliases pointing to pkg/model for convenience
