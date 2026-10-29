@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticache"
@@ -255,4 +255,17 @@ func (s *ElastiCacheScanner) Scan(ctx context.Context) ([]scanner.ScanResult, er
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *ElastiCacheScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "elasticache-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "elasticache",
+		CheckIDs:      []string{"elasticache_redis_cluster_auto_minor_version_upgrades", "elasticache_redis_cluster_backup_enabled", "elasticache_redis_cluster_in_transit_encryption_enabled", "elasticache_redis_cluster_rest_encryption_enabled"},
+	}
 }

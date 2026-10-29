@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,6 +18,9 @@ type LambdaScanner struct {
 	cwClient     *cloudwatch.Client
 }
 
+// Ensure LambdaScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*LambdaScanner)(nil)
+
 func NewLambdaScanner(cfg aws.Config) *LambdaScanner {
 	return &LambdaScanner{
 		lambdaClient: lambda.NewFromConfig(cfg),
@@ -26,6 +30,19 @@ func NewLambdaScanner(cfg aws.Config) *LambdaScanner {
 
 func (s *LambdaScanner) Name() string {
 	return "Lambda-FinOps-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *LambdaScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "lambda-finops-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "lambda",
+		CheckIDs:      []string{RuleLambdaFunctionUnused},
+	}
 }
 
 func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -53,6 +70,7 @@ func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 			processedCount++
 
 			fnName := aws.ToString(fn.FunctionName)
+			fnArn := aws.ToString(fn.FunctionArn)
 			allocatedMemory := aws.ToInt32(fn.MemorySize)
 			timeoutSec := int(aws.ToInt32(fn.Timeout))
 			if timeoutSec == 0 {
@@ -89,17 +107,14 @@ func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 				issueType = "Dormant Function"
 				recommendation = "Delete or archive dormant Lambda function (0 invocations in last 30 days)."
 			} else if throttles > 0 {
-				// Check 2: Scale up due to throttling
 				issueType = "Scale Up (Throttled)"
-				recommendation = fmt.Sprintf("Scale Up Lambda Concurrency — Function experienced %.0f throttle events in 30 days. Increase reserved concurrency or request an account concurrency increase.", throttles)
+				recommendation = fmt.Sprintf("Scale Up Lambda Concurrency — Function experienced %.0f throttle events in 30 days.", throttles)
 			} else if maxDurationMs >= 0.75*timeoutMs || (avgDurationMs > 0 && avgDurationMs >= 0.75*timeoutMs) {
-				// Check 3: Scale up memory/CPU due to runtime approaching timeout (>75%)
 				issueType = "Scale Up (High Duration/Memory)"
-				recommendation = fmt.Sprintf("Scale Up Lambda Memory — Function runtime (Max: %.0fms) exceeds 75%% of configured timeout (%ds). Allocating more memory scales CPU proportionally, reducing duration and eliminating timeout risks.", maxDurationMs, timeoutSec)
+				recommendation = fmt.Sprintf("Scale Up Lambda Memory — Function runtime (Max: %.0fms) exceeds 75%% of configured timeout (%ds).", maxDurationMs, timeoutSec)
 			} else if allocatedMemory >= 1024 && avgDurationMs < 200 {
-				// Check 4: Over-provisioned memory
 				issueType = "Over-Provisioned Memory"
-				recommendation = fmt.Sprintf("Downsize Lambda Memory — Function has %dMB allocated but executes in only %.0fms. Reducing memory allocation will save costs.", allocatedMemory, avgDurationMs)
+				recommendation = fmt.Sprintf("Downsize Lambda Memory — Function has %dMB allocated but executes in only %.0fms.", allocatedMemory, avgDurationMs)
 			}
 
 			if recommendation != "" {
@@ -107,13 +122,29 @@ func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 			}
 			metrics["IssueType"] = issueType
 
-			results = append(results, scanner.ScanResult{
-				ResourceID:   fnName,
+			costWaste := 0.0
+			if isOrphaned {
+				costWaste = monthlyCost
+			}
+
+			resID := fnArn
+			if resID == "" {
+				resID = fnName
+			}
+
+			results = append(results, BuildFinOpsResult(FinOpsResultParams{
+				ResourceID:   resID,
 				ResourceType: "Lambda",
 				Region:       "regional",
+				RuleID:       RuleLambdaFunctionUnused,
+				DisplayName:  fnName,
 				IsOrphaned:   isOrphaned,
+				Cost:         costWaste,
+				Title:        "Unused or Dormant Lambda Function",
+				Description:  fmt.Sprintf("Lambda function %s recorded zero invocations over the last 30 days.", fnName),
+				Remediation:  "Delete unused Lambda function via aws lambda delete-function",
 				Metrics:      metrics,
-			})
+			}))
 		}
 	}
 	return results, nil

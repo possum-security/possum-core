@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -358,4 +358,17 @@ func (s *CloudTrailScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *CloudTrailScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "cloudtrail-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "cloudtrail",
+		CheckIDs:      []string{"cloudtrail_cloudwatch_logging_enabled", "cloudtrail_kms_encryption_enabled", "cloudtrail_log_file_validation_enabled", "cloudtrail_logs_s3_bucket_access_logging_enabled", "cloudtrail_logs_s3_bucket_is_not_publicly_accessible", "cloudtrail_multi_region_enabled", "cloudtrail_s3_dataevents_read_enabled", "cloudtrail_s3_dataevents_write_enabled"},
+	}
 }

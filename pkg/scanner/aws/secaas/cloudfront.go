@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
@@ -433,4 +433,17 @@ func (s *CloudFrontScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 		}
 	}
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *CloudFrontScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "cloudfront-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeGlobal,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "cloudfront",
+		CheckIDs:      []string{"cloudfront_distributions_custom_ssl_certificate", "cloudfront_distributions_geo_restrictions_enabled", "cloudfront_distributions_https_enabled", "cloudfront_distributions_logging_enabled", "cloudfront_distributions_multiple_origin_failover_configured", "cloudfront_distributions_using_deprecated_ssl_protocols", "cloudfront_distributions_using_waf"},
+	}
 }

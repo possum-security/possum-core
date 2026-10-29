@@ -4,7 +4,8 @@
 > Unifying Cloud Security Posture and Cost Optimization.
 
 [![CI](https://github.com/amirmahdy/possum-core/actions/workflows/ci.yml/badge.svg)](https://github.com/amirmahdy/possum-core/actions)
-[![License](https://img.shields.io/badge/License-Non--Commercial-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Open Source](https://badges.frapsoft.com/os/v1/open-source.svg?v=103)](https://opensource.org/licenses/Apache-2.0)
 
 Possum is a zero-dependency, single-binary CLI engine designed to detect security misconfigurations and cloud financial waste in CI/CD and developer environments.
 
@@ -68,4 +69,6 @@ Learn more at [https://possum.io](https://possum.io).
 
 ## 📄 License
 
-Possum is licensed under the [Non-Commercial License](LICENSE) (free for personal, educational, and research use; commercial use prohibited without permission).
+Possum Core is free and open-source software licensed under the [Apache License 2.0](LICENSE). You are free to run, study, modify, and distribute this software for personal, academic, or commercial purposes.
+
+The hosted multi-account management dashboard, centralized security team attack graphs, and automated Terraform pull request bots are offered via Possum Cloud (commercial).

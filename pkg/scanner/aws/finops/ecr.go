@@ -27,6 +27,9 @@ type ECRScanner struct {
 	FlagUntagged  bool
 }
 
+// Ensure ECRScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*ECRScanner)(nil)
+
 func NewECRScanner(cfg aws.Config, retentionDays int, flagUntagged bool) *ECRScanner {
 	if retentionDays <= 0 {
 		retentionDays = 180
@@ -53,6 +56,19 @@ func (s *ECRScanner) Name() string {
 	return "ECR-Image-Scanner"
 }
 
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *ECRScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "ecr-image-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "ecr",
+		CheckIDs:      []string{RuleECRImageUntaggedOrStale},
+	}
+}
+
 func (s *ECRScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	limit := 0
 	if val, ok := ctx.Value("ResourceLimit").(int); ok {
@@ -61,16 +77,15 @@ func (s *ECRScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	processedCount := 0
 	var results []scanner.ScanResult
 
-	// First, we must get a list of all repositories
 	repoPaginator := ecr.NewDescribeRepositoriesPaginator(s.client, &ecr.DescribeRepositoriesInput{})
 
 	for repoPaginator.HasMorePages() {
-		repoPage, err := repoPaginator.NextPage(ctx)
+		page, err := repoPaginator.NextPage(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		for _, repo := range repoPage.Repositories {
+		for _, repo := range page.Repositories {
 			if limit > 0 && processedCount >= limit {
 				break
 			}
@@ -78,45 +93,44 @@ func (s *ECRScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 
 			repoName := aws.ToString(repo.RepositoryName)
 
-			// Now we paginate through the images in this specific repository
 			imgPaginator := ecr.NewDescribeImagesPaginator(s.client, &ecr.DescribeImagesInput{
-				RepositoryName: aws.String(repoName),
+				RepositoryName: repo.RepositoryName,
 			})
 
 			for imgPaginator.HasMorePages() {
 				imgPage, err := imgPaginator.NextPage(ctx)
 				if err != nil {
-					return nil, err // In a production app, we might want to log this and continue rather than fail the whole scan
+					break
 				}
 
 				for _, image := range imgPage.ImageDetails {
-					isOrphaned := false
-					recommendation := ""
+					sizeBytes := float64(aws.ToInt64(image.ImageSizeInBytes))
+					cost := (sizeBytes / (1024.0 * 1024.0 * 1024.0)) * 0.10
 
-					// FinOps Rule 1: Untagged images are pure waste. When you push 'latest' over an existing image,
-					// the old image loses its tag but stays in storage, costing money forever.
-					if s.FlagUntagged && len(image.ImageTags) == 0 {
+					isOrphaned := false
+					var recommendation string
+
+					if len(image.ImageTags) == 0 && s.FlagUntagged {
 						isOrphaned = true
 						recommendation = "Delete Untagged Image"
-					} else {
-						// FinOps Rule 2: Even if tagged, images older than 180 days are often stale CI/CD artifacts.
-						if image.ImagePushedAt != nil {
-							daysOld := int(time.Since(*image.ImagePushedAt).Hours() / 24)
-							if daysOld > s.RetentionDays {
-								isOrphaned = true
-								recommendation = fmt.Sprintf("Review and Delete Stale Image (>%d days old)", s.RetentionDays)
-							}
+					}
+
+					if !isOrphaned && image.ImagePushedAt != nil {
+						daysOld := int(time.Since(*image.ImagePushedAt).Hours() / 24)
+						if daysOld > s.RetentionDays {
+							isOrphaned = true
+							recommendation = fmt.Sprintf("Image is %d days old (exceeds %d-day retention)", daysOld, s.RetentionDays)
 						}
 					}
 
-					sizeMB := float64(aws.ToInt64(image.ImageSizeInBytes)) / 1024 / 1024
-					cost := (sizeMB / 1024) * 0.10 // $0.10/GB-month
-
 					metrics := map[string]interface{}{
-						"Repository":           repoName,
-						"SizeMB":               sizeMB,
+						"RepositoryName":       repoName,
+						"SizeInBytes":          sizeBytes,
 						"Tags":                 image.ImageTags,
 						"EstimatedMonthlyCost": cost,
+					}
+					if image.ImagePushedAt != nil {
+						metrics["PushedAt"] = image.ImagePushedAt.Format("2006-01-02")
 					}
 
 					if isOrphaned {
@@ -138,13 +152,26 @@ func (s *ECRScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 						metrics["Recommendation"] = recommendation
 					}
 
-					results = append(results, scanner.ScanResult{
-						ResourceID:   aws.ToString(image.ImageDigest),
+					costWaste := 0.0
+					if isOrphaned {
+						costWaste = cost
+					}
+
+					digest := aws.ToString(image.ImageDigest)
+
+					results = append(results, BuildFinOpsResult(FinOpsResultParams{
+						ResourceID:   digest,
 						ResourceType: "ECR_IMAGE",
 						Region:       "global",
+						RuleID:       RuleECRImageUntaggedOrStale,
+						DisplayName:  fmt.Sprintf("%s@%s", repoName, digest),
 						IsOrphaned:   isOrphaned,
+						Cost:         costWaste,
+						Title:        "Untagged or Stale ECR Docker Image",
+						Description:  fmt.Sprintf("ECR image in %s is untagged or exceeds retention window (%d days).", repoName, s.RetentionDays),
+						Remediation:  fmt.Sprintf("Delete image via aws ecr batch-delete-image --repository-name %s --image-ids imageDigest=%s", repoName, digest),
 						Metrics:      metrics,
-					})
+					}))
 				}
 			}
 		}
@@ -166,7 +193,6 @@ func getVulnerabilityCounts(ctx context.Context, image ecrtypes.ImageDetail, rep
 	}
 	for _, tag := range image.ImageTags {
 		keys = append(keys, tag)
-		keys = append(keys, fmt.Sprintf("%s:%s", repoName, tag))
 	}
 	keys = append(keys, repoName)
 
@@ -205,47 +231,6 @@ func getVulnerabilityCounts(ctx context.Context, image ecrtypes.ImageDetail, rep
 						critCount++
 					} else if strings.EqualFold(f.Severity, "HIGH") {
 						highCount++
-					}
-				}
-			}
-		case []scanner.ScanResult:
-			for _, r := range v {
-				matched := false
-				for _, k := range keys {
-					if strings.Contains(r.ResourceID, k) {
-						matched = true
-						break
-					}
-				}
-				if matched {
-					if strings.EqualFold(r.Severity, "CRITICAL") {
-						critCount++
-					} else if strings.EqualFold(r.Severity, "HIGH") {
-						highCount++
-					}
-				}
-			}
-		case map[string][]model.SecurityFinding:
-			for _, k := range keys {
-				if flist, ok := v[k]; ok {
-					for _, f := range flist {
-						if strings.EqualFold(f.Severity, "CRITICAL") {
-							critCount++
-						} else if strings.EqualFold(f.Severity, "HIGH") {
-							highCount++
-						}
-					}
-				}
-			}
-		case map[string][]scanner.ScanResult:
-			for _, k := range keys {
-				if rlist, ok := v[k]; ok {
-					for _, r := range rlist {
-						if strings.EqualFold(r.Severity, "CRITICAL") {
-							critCount++
-						} else if strings.EqualFold(r.Severity, "HIGH") {
-							highCount++
-						}
 					}
 				}
 			}

@@ -71,6 +71,8 @@ func (f *TableFormatter) Format(w io.Writer, results []model.ScanResult) error {
 		var statusStr string
 		if r.Status == model.StatusPass {
 			statusStr = f.colorize(colorGreen, string(r.Status))
+		} else if r.Status == model.StatusSuppressed {
+			statusStr = f.colorize(colorCyan, "SUPPR")
 		} else {
 			statusStr = f.colorize(colorRed, string(r.Status))
 		}
@@ -105,11 +107,16 @@ func (f *TableFormatter) Format(w io.Writer, results []model.ScanResult) error {
 		regionText = fmt.Sprintf(" across %s", f.Region)
 	}
 	fmt.Fprintf(w, "Scan Summary: %d checks evaluated%s.\n", summary.TotalEvaluated, regionText)
-	fmt.Fprintf(w, "Findings:     %s | %s | %s | %s\n",
+	suppressedText := ""
+	if summary.SuppressedCount > 0 {
+		suppressedText = fmt.Sprintf(" | %s", f.colorize(colorCyan, fmt.Sprintf("%d SUPPRESSED", summary.SuppressedCount)))
+	}
+	fmt.Fprintf(w, "Findings:     %s | %s | %s | %s%s\n",
 		f.colorize(colorRed, fmt.Sprintf("%d CRITICAL", summary.CriticalCount)),
 		f.colorize(colorMagenta, fmt.Sprintf("%d HIGH", summary.HighCount)),
 		f.colorize(colorYellow, fmt.Sprintf("%d MEDIUM", summary.MediumCount)),
 		f.colorize(colorGreen, fmt.Sprintf("%d PASS", summary.PassCount)),
+		suppressedText,
 	)
 	if summary.TotalMonthlyWasteMo > 0 {
 		fmt.Fprintf(w, "FinOps Waste: %s in orphaned resources detected.\n",

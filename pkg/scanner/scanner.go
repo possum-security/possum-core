@@ -22,8 +22,9 @@ type (
 type ExecutionCost string
 
 const (
-	CostLight ExecutionCost = "LIGHT" // Fast API calls
-	CostHeavy ExecutionCost = "HEAVY" // Large listings, deep policy analyses
+	CostLight  ExecutionCost = "LIGHT"  // Fast API calls
+	CostMedium ExecutionCost = "MEDIUM" // Moderate API queries / CloudWatch metrics
+	CostHeavy  ExecutionCost = "HEAVY"  // Large listings, deep policy analyses
 )
 
 // ScannerMeta provides rich metadata for filtering and execution planning.

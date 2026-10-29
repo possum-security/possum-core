@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
@@ -416,4 +416,17 @@ func (s *APIGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *APIGatewayScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "apigateway-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "apigateway",
+		CheckIDs:      []string{"apigateway_restapi_authorizers_enabled", "apigateway_restapi_logging_enabled", "apigateway_restapi_tracing_enabled", "apigatewayv2_api_access_logging_enabled", "apigatewayv2_api_authorizers_enabled"},
+	}
 }

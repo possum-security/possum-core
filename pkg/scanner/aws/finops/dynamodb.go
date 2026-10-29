@@ -3,6 +3,7 @@ package finops
 import (
 	"context"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,6 +16,9 @@ type DynamoDBScanner struct {
 	cwClient  *cloudwatch.Client
 }
 
+// Ensure DynamoDBScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*DynamoDBScanner)(nil)
+
 func NewDynamoDBScanner(cfg aws.Config) *DynamoDBScanner {
 	return &DynamoDBScanner{
 		ddbClient: dynamodb.NewFromConfig(cfg),
@@ -24,6 +28,19 @@ func NewDynamoDBScanner(cfg aws.Config) *DynamoDBScanner {
 
 func (s *DynamoDBScanner) Name() string {
 	return "DynamoDB-FinOps-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *DynamoDBScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "dynamodb-finops-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeRegional,
+		ExecutionCost: scanner.CostLight,
+		Service:       "dynamodb",
+		CheckIDs:      []string{RuleDynamoDBProvisionedCapacityUnused},
+	}
 }
 
 func (s *DynamoDBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -70,20 +87,38 @@ func (s *DynamoDBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error
 				metrics["ProvisionedRCU"] = rcu
 				metrics["ProvisionedWCU"] = wcu
 
-				if rcu > 0 || wcu > 0 {
+				if rcu > 10 || wcu > 10 {
+					isOrphaned = true
 					metrics["Recommendation"] = "Consider switching to On-Demand capacity for unpredictable workloads"
 				}
 			}
 
 			metrics["EstimatedMonthlyCost"] = monthlyCost
 
-			results = append(results, scanner.ScanResult{
-				ResourceID:   tableName,
+			costWaste := 0.0
+			if isOrphaned {
+				costWaste = monthlyCost
+			}
+
+			tableArn := aws.ToString(desc.Table.TableArn)
+			resID := tableArn
+			if resID == "" {
+				resID = tableName
+			}
+
+			results = append(results, BuildFinOpsResult(FinOpsResultParams{
+				ResourceID:   resID,
 				ResourceType: "DynamoDB",
 				Region:       "regional",
+				RuleID:       RuleDynamoDBProvisionedCapacityUnused,
+				DisplayName:  tableName,
 				IsOrphaned:   isOrphaned,
+				Cost:         costWaste,
+				Title:        "DynamoDB Provisioned Capacity Optimization",
+				Description:  "DynamoDB table has high fixed provisioned throughput that may be underutilized.",
+				Remediation:  "Switch DynamoDB table billing mode to PAY_PER_REQUEST (On-Demand).",
 				Metrics:      metrics,
-			})
+			}))
 		}
 	}
 	return results, nil

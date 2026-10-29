@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
+	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/acm"
 	"github.com/aws/aws-sdk-go-v2/service/acm/types"
-	"github.com/amirmahdy/possum-core/pkg/scanner"
-	graph "github.com/amirmahdy/possum-core/pkg/model"
 )
 
 type ACMScanner struct {
@@ -125,4 +125,17 @@ func extractRegion(arn string) string {
 		return parts[3]
 	}
 	return "global"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *ACMScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "acm-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "acm",
+		CheckIDs:      []string{"acm_certificates_expiration_check"},
+	}
 }

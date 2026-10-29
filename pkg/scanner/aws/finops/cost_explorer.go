@@ -2,8 +2,10 @@ package finops
 
 import (
 	"context"
+	"strconv"
 	"time"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,6 +18,9 @@ type CostExplorerScanner struct {
 	client *costexplorer.Client
 	days   int
 }
+
+// Ensure CostExplorerScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*CostExplorerScanner)(nil)
 
 func NewCostExplorerScanner(cfg aws.Config, days int) *CostExplorerScanner {
 	if days <= 0 {
@@ -31,6 +36,19 @@ func (s *CostExplorerScanner) Name() string {
 	return "CostExplorer-Scanner"
 }
 
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *CostExplorerScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "costexplorer-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeGlobal,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "costexplorer",
+		CheckIDs:      []string{RuleCostExplorerSpendTracked},
+	}
+}
+
 func (s *CostExplorerScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	limit := 0
 	if val, ok := ctx.Value("ResourceLimit").(int); ok {
@@ -40,10 +58,6 @@ func (s *CostExplorerScanner) Scan(ctx context.Context) ([]scanner.ScanResult, e
 	var results []scanner.ScanResult
 
 	now := time.Now().UTC()
-	// Cost explorer requires the end date to be exclusive.
-	// E.g. to get yesterday's full data, End should be today (now) and Start should be yesterday.
-	// But because we want a sliding window of `s.days`, we go back `s.days`.
-	// For days=30: start is 30 days ago, end is today.
 	endDate := now
 	startDate := now.AddDate(0, 0, -s.days)
 
@@ -86,18 +100,27 @@ func (s *CostExplorerScanner) Scan(ctx context.Context) ([]scanner.ScanResult, e
 
 				serviceName := group.Keys[0]
 				costAmount := aws.ToString(group.Metrics["UnblendedCost"].Amount)
+				costVal, _ := strconv.ParseFloat(costAmount, 64)
 
-				results = append(results, scanner.ScanResult{
+				metrics := map[string]interface{}{
+					"Date":                 dateStr,
+					"UnblendedCost":        costAmount,
+					"EstimatedMonthlyCost": costVal,
+					"Currency":             aws.ToString(group.Metrics["UnblendedCost"].Unit),
+				}
+
+				results = append(results, BuildFinOpsResult(FinOpsResultParams{
 					ResourceID:   serviceName,
 					ResourceType: "BILLING",
 					Region:       "global",
+					RuleID:       RuleCostExplorerSpendTracked,
+					DisplayName:  serviceName,
 					IsOrphaned:   false,
-					Metrics: map[string]interface{}{
-						"Date":          dateStr,
-						"UnblendedCost": costAmount,
-						"Currency":      aws.ToString(group.Metrics["UnblendedCost"].Unit),
-					},
-				})
+					Cost:         0.0,
+					Title:        "AWS Daily Spend Tracking",
+					Description:  "Daily unblended service spend recorded via Cost Explorer.",
+					Metrics:      metrics,
+				}))
 			}
 		}
 

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
@@ -388,4 +388,17 @@ func (s *AutoScalingScanner) Scan(ctx context.Context) ([]scanner.ScanResult, er
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *AutoScalingScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "autoscaling-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "autoscaling",
+		CheckIDs:      []string{"autoscaling_find_secrets_ec2_launch_configuration", "autoscaling_group_launch_configuration_no_public_ip", "autoscaling_group_launch_configuration_requires_imdsv2"},
+	}
 }

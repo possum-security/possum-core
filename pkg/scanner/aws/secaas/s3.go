@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -612,4 +612,17 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *S3Scanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "s3-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeGlobal,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "s3",
+		CheckIDs:      []string{"s3_account_level_public_access_blocks", "s3_bucket_default_encryption", "s3_bucket_kms_encryption", "s3_bucket_level_public_access_block", "s3_bucket_no_mfa_delete", "s3_bucket_object_versioning", "s3_bucket_policy_public_write_access", "s3_bucket_public_access", "s3_bucket_public_list_acl", "s3_bucket_public_write_acl", "s3_bucket_secure_transport_policy", "s3_bucket_server_access_logging_enabled"},
+	}
 }

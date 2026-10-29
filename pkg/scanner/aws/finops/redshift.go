@@ -3,6 +3,7 @@ package finops
 import (
 	"context"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,6 +17,9 @@ type RedshiftScanner struct {
 	cwClient *cloudwatch.Client
 }
 
+// Ensure RedshiftScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*RedshiftScanner)(nil)
+
 func NewRedshiftScanner(cfg aws.Config) *RedshiftScanner {
 	return &RedshiftScanner{
 		rsClient: redshift.NewFromConfig(cfg),
@@ -25,6 +29,19 @@ func NewRedshiftScanner(cfg aws.Config) *RedshiftScanner {
 
 func (s *RedshiftScanner) Name() string {
 	return "Redshift-FinOps-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *RedshiftScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "redshift-finops-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "redshift",
+		CheckIDs:      []string{RuleRedshiftClusterIdle},
+	}
 }
 
 func (s *RedshiftScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -64,7 +81,7 @@ func (s *RedshiftScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error
 			nodeType := aws.ToString(cluster.NodeType)
 			numNodes := float64(aws.ToInt32(cluster.NumberOfNodes))
 			if numNodes == 0 {
-				numNodes = 1 // default if not specified
+				numNodes = 1
 			}
 
 			hourlyRate := 0.25
@@ -93,13 +110,24 @@ func (s *RedshiftScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error
 				metrics["Recommendation"] = "Pause or terminate unused Redshift cluster"
 			}
 
-			results = append(results, scanner.ScanResult{
+			costWaste := 0.0
+			if isOrphaned {
+				costWaste = monthlyCost
+			}
+
+			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   clusterID,
 				ResourceType: "Redshift",
 				Region:       "regional",
+				RuleID:       RuleRedshiftClusterIdle,
+				DisplayName:  clusterID,
 				IsOrphaned:   isOrphaned,
+				Cost:         costWaste,
+				Title:        "Idle Amazon Redshift Cluster",
+				Description:  "Redshift cluster has under 5% average CPU utilization and 0 database connections.",
+				Remediation:  "Pause cluster via aws redshift pause-cluster or delete cluster after taking a final snapshot.",
 				Metrics:      metrics,
-			})
+			}))
 		}
 	}
 	return results, nil

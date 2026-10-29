@@ -3,9 +3,9 @@ package finops_test
 import (
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
 	"github.com/amirmahdy/possum-core/pkg/scanner/aws/finops"
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 func TestNewCostExplorerScanner_Defaults(t *testing.T) {

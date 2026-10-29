@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -780,4 +780,27 @@ func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *LambdaScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "lambda-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "lambda",
+		CheckIDs: []string{
+			"awslambda_function_inside_vpc",
+			"awslambda_function_using_supported_runtimes",
+			"awslambda_function_url_cors_policy",
+			"awslambda_function_no_dead_letter_queue",
+			"awslambda_function_no_secrets_in_variables",
+			"awslambda_function_tracing_enabled",
+			"awslambda_function_execution_role_least_privilege",
+			"awslambda_function_not_publicly_accessible",
+			"awslambda_function_no_secrets_in_code",
+		},
+	}
 }

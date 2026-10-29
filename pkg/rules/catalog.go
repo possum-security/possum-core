@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/rules/embedded"
 )
 
@@ -171,4 +172,96 @@ func (c *RuleCatalog) ListChecks(filter CheckFilter) []CheckMetadata {
 	}
 
 	return matched
+}
+
+// EnrichResult decorates a ScanResult with rich human-readable titles, descriptions,
+// actionable remediation recommendations, and compliance framework mappings from the catalog.
+func (c *RuleCatalog) EnrichResult(r *model.ScanResult) {
+	if r == nil || r.RuleID == "" {
+		return
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	meta, ok := c.checks[r.RuleID]
+	if !ok {
+		return
+	}
+
+	if r.Title == "" && meta.CheckTitle != "" {
+		r.Title = meta.CheckTitle
+	}
+	if r.Description == "" && meta.Description != "" {
+		r.Description = meta.Description
+	}
+	if r.Remediation == "" {
+		if meta.Remediation.Recommendation.Text != "" {
+			r.Remediation = meta.Remediation.Recommendation.Text
+		} else if meta.Remediation.Code.CLI != "" {
+			r.Remediation = meta.Remediation.Code.CLI
+		} else if meta.Remediation.Code.Terraform != "" {
+			r.Remediation = meta.Remediation.Code.Terraform
+		}
+	}
+	if r.Category == "" && len(meta.Categories) > 0 {
+		r.Category = meta.Categories[0]
+	}
+	if len(r.Compliance) == 0 && len(meta.ComplianceFrameworks) > 0 {
+		r.Compliance = make([]string, len(meta.ComplianceFrameworks))
+		copy(r.Compliance, meta.ComplianceFrameworks)
+	}
+}
+
+// EnrichResults enriches a slice of ScanResult structs in-place and returns the slice.
+func (c *RuleCatalog) EnrichResults(results []model.ScanResult) []model.ScanResult {
+	for i := range results {
+		c.EnrichResult(&results[i])
+	}
+	return results
+}
+
+// GetChecksByFramework returns all check IDs associated with a specific compliance framework
+// (e.g. "cis-3.0", "cis_3.0_aws", "pci_dss", "soc2", "iso27001_2022_aws").
+func (c *RuleCatalog) GetChecksByFramework(framework string) []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	target := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(framework, "-", "_"), ".", "_"))
+	var matched []string
+
+	for _, id := range c.sortedIDs {
+		chk := c.checks[id]
+		for _, fw := range chk.ComplianceFrameworks {
+			normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(fw, "-", "_"), ".", "_"))
+			if strings.Contains(normalized, target) || strings.Contains(target, normalized) {
+				matched = append(matched, id)
+				break
+			}
+		}
+	}
+
+	return matched
+}
+
+// ListComplianceFrameworks returns a deduplicated, sorted list of all compliance framework identifiers.
+func (c *RuleCatalog) ListComplianceFrameworks() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	frameworkMap := make(map[string]struct{})
+	for _, chk := range c.checks {
+		for _, fw := range chk.ComplianceFrameworks {
+			if fw != "" {
+				frameworkMap[fw] = struct{}{}
+			}
+		}
+	}
+
+	frameworks := make([]string, 0, len(frameworkMap))
+	for fw := range frameworkMap {
+		frameworks = append(frameworks, fw)
+	}
+	sort.Strings(frameworks)
+	return frameworks
 }

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -726,4 +726,17 @@ func securityGroupAllowsNonStandardPublicIngress(sg ec2types.SecurityGroup) bool
 		}
 	}
 	return false
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *EC2Scanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "ec2-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "ec2",
+		CheckIDs:      []string{"ec2_ami_public", "ec2_confidential_workload_host_imdsv2_not_enforced", "ec2_confidential_workload_host_unrestricted_ingress", "ec2_ebs_public_snapshot", "ec2_ebs_volume_encryption", "ec2_instance_imdsv2_enabled", "ec2_instance_profile_attached"},
+	}
 }

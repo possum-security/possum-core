@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,6 +18,9 @@ type S3Scanner struct {
 	cwClient *cloudwatch.Client
 }
 
+// Ensure S3Scanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*S3Scanner)(nil)
+
 func NewS3Scanner(cfg aws.Config) *S3Scanner {
 	return &S3Scanner{
 		client:   s3.NewFromConfig(cfg),
@@ -26,6 +30,19 @@ func NewS3Scanner(cfg aws.Config) *S3Scanner {
 
 func (s *S3Scanner) Name() string {
 	return "S3-FinOps-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *S3Scanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "s3-finops-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeGlobal,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "s3",
+		CheckIDs:      []string{RuleS3BucketLifecycleMissing},
+	}
 }
 
 func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -69,13 +86,26 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			metrics["Recommendation"] = "Implement S3 lifecycle policy to transition or delete old objects"
 		}
 
-		results = append(results, scanner.ScanResult{
+		isOrphaned := !hasLifecycle
+		costWaste := 0.0
+		if isOrphaned && monthlyCost > 0 {
+			costWaste = monthlyCost * 0.30 // Potential 30% savings via intelligent tiering
+		}
+
+		results = append(results, BuildFinOpsResult(FinOpsResultParams{
 			ResourceID:   bucketName,
 			ResourceType: "S3",
 			Region:       "global",
-			IsOrphaned:   false,
+			RuleID:       RuleS3BucketLifecycleMissing,
+			DisplayName:  bucketName,
+			IsOrphaned:   isOrphaned,
+			Cost:         costWaste,
+			Severity:     model.SeverityLow,
+			Title:        "S3 Bucket Missing Lifecycle Configuration",
+			Description:  "S3 bucket does not have lifecycle rules to transition objects to Glacier or expire stale multipart uploads.",
+			Remediation:  "Configure lifecycle policy via aws s3api put-bucket-lifecycle-configuration",
 			Metrics:      metrics,
-		})
+		}))
 	}
 	return results, nil
 }

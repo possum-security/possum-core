@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
@@ -264,4 +264,17 @@ func (s *ECSSecScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *ECSSecScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "ecs-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "ecs",
+		CheckIDs:      []string{"ecs_task_definitions_containers_readonly_access", "ecs_task_definitions_host_namespace_not_shared", "ecs_task_definitions_no_environment_secrets", "ecs_task_definitions_no_privileged_containers"},
+	}
 }

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -236,4 +236,17 @@ func (s *ECRSecScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *ECRSecScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "ecr-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "ecr",
+		CheckIDs:      []string{"ecr_repositories_lifecycle_policy_enabled", "ecr_repositories_not_publicly_accessible", "ecr_repositories_scan_images_on_push_enabled", "ecr_repositories_tag_immutability"},
+	}
 }

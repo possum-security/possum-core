@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/account"
@@ -132,4 +132,17 @@ func (s *AccountScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error)
 	})
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *AccountScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "account-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeGlobal,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "account",
+		CheckIDs:      []string{"account_maintain_current_contact_details", "account_security_contact_information_is_registered", "account_security_questions_are_registered_in_the_aws_account"},
+	}
 }

@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/codebuild"
@@ -275,4 +275,17 @@ func (s *CodeBuildScanner) Scan(ctx context.Context) ([]scanner.ScanResult, erro
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *CodeBuildScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "codebuild-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "codebuild",
+		CheckIDs:      []string{"codebuild_project_no_secrets_in_variables", "codebuild_project_source_repo_url_no_sensitive_credentials"},
+	}
 }

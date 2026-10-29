@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/opensearch"
@@ -283,4 +283,17 @@ func (s *OpenSearchScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *OpenSearchScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "opensearch-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "opensearch",
+		CheckIDs:      []string{"opensearch_service_domains_access_control_enabled", "opensearch_service_domains_audit_logging_enabled", "opensearch_service_domains_encryption_at_rest_enabled", "opensearch_service_domains_https_communications_enforced", "opensearch_service_domains_node_to_node_encryption_enabled", "opensearch_service_domains_not_publicly_accessible"},
+	}
 }

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -203,4 +203,17 @@ func (s *SecretsManagerScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *SecretsManagerScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "secretsmanager-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "secretsmanager",
+		CheckIDs:      []string{"secretsmanager_automatic_rotation_enabled", "secretsmanager_not_publicly_accessible", "secretsmanager_secret_rotated_periodically"},
+	}
 }

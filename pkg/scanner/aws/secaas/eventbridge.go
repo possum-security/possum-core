@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
@@ -375,4 +375,17 @@ func matchAccountValue(val interface{}, targetAccountID string) bool {
 		}
 	}
 	return false
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *EventBridgeScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "eventbridge-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "eventbridge",
+		CheckIDs:      []string{"eventbridge_bus_cross_account_access", "eventbridge_bus_exposed"},
+	}
 }

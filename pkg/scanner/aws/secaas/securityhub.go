@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/securityhub"
@@ -101,4 +101,17 @@ func (s *SecurityHubScanner) Scan(ctx context.Context) ([]scanner.ScanResult, er
 	})
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *SecurityHubScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "securityhub-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "securityhub",
+		CheckIDs:      []string{"securityhub_enabled"},
+	}
 }

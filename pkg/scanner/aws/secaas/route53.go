@@ -6,8 +6,8 @@ import (
 	"net"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
@@ -146,4 +146,17 @@ func isVulnerableDomain(domain string) bool {
 		}
 	}
 	return false
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *Route53Scanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "route53-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeGlobal,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "route53",
+		CheckIDs:      []string{"route53_public_hosted_zones_cloudwatch_logging_enabled"},
+	}
 }

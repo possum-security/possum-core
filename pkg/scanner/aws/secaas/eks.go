@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
@@ -105,4 +105,17 @@ func (s *EKSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *EKSScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "eks-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "eks",
+		CheckIDs:      []string{"eks_cluster_not_publicly_accessible"},
+	}
 }

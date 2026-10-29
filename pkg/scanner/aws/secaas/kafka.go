@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/kafka"
@@ -308,4 +308,17 @@ func (s *KafkaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *KafkaScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "kafka-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "kafka",
+		CheckIDs:      []string{"kafka_cluster_encryption_at_rest_uses_cmk", "kafka_cluster_in_transit_encryption_enabled", "kafka_cluster_is_public", "kafka_cluster_unrestricted_access_disabled"},
+	}
 }

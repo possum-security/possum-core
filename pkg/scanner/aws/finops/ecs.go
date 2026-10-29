@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
-	graph "github.com/amirmahdy/possum-core/pkg/model"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
@@ -13,12 +13,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 )
 
-// ECSScanner scans ECS clusters and services to detect over-utilized (scale up),
-// under-utilized (downsize), and orphaned (0 tasks) container workloads.
+// ECSScanner scans ECS clusters and services to detect over-utilized, under-utilized, and dormant services.
 type ECSScanner struct {
 	ecsClient *ecs.Client
 	cwClient  *cloudwatch.Client
 }
+
+// Ensure ECSScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*ECSScanner)(nil)
 
 func NewECSScanner(cfg aws.Config) *ECSScanner {
 	return &ECSScanner{
@@ -29,6 +31,19 @@ func NewECSScanner(cfg aws.Config) *ECSScanner {
 
 func (s *ECSScanner) Name() string {
 	return "ECS-FinOps-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *ECSScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "ecs-finops-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "ecs",
+		CheckIDs:      []string{RuleECSServiceIdle},
+	}
 }
 
 func (s *ECSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -85,6 +100,7 @@ func (s *ECSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					processedCount++
 
 					svcName := aws.ToString(svc.ServiceName)
+					svcArn := aws.ToString(svc.ServiceArn)
 					clusterName := aws.ToString(svc.ClusterArn)
 					runningCount := svc.RunningCount
 					desiredCount := svc.DesiredCount
@@ -117,41 +133,56 @@ func (s *ECSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					metrics["MaxCPU_30Days"] = maxCPU
 					metrics["MaxMemory_30Days"] = maxMem
 
-					// Check for scale-up vs downsize vs zombie
 					if runningCount == 0 && desiredCount == 0 {
 						isOrphaned = true
 						metrics["IssueType"] = "Dormant Service (0 Desired Tasks)"
 						recommendation = "Decommission inactive ECS service to reduce configuration overhead."
 					} else if maxCPU >= 75.0 || maxMem >= 75.0 {
 						metrics["IssueType"] = "Scale Up (High Utilization)"
-						recommendation = fmt.Sprintf("Scale Up ECS Service — High utilization detected (Max CPU: %.1f%%, Max Memory: %.1f%% exceeds 75%% threshold). Increase task CPU/Memory reservations or scale out desired task count to prevent container throttling and OOM kills.", maxCPU, maxMem)
+						recommendation = fmt.Sprintf("Scale Up ECS Service — High utilization detected (Max CPU: %.1f%%, Max Memory: %.1f%%).", maxCPU, maxMem)
 					} else if runningCount > 0 && maxCPU < 10.0 && maxMem < 20.0 {
+						isOrphaned = true
 						metrics["IssueType"] = "Over-Provisioned Service"
-						recommendation = fmt.Sprintf("Downsize ECS Service — Low resource utilization (Max CPU: %.1f%%, Max Memory: %.1f%%). Consider reducing task size or decreasing desired task count to optimize spend.", maxCPU, maxMem)
+						recommendation = fmt.Sprintf("Downsize ECS Service — Low resource utilization (Max CPU: %.1f%%, Max Memory: %.1f%%).", maxCPU, maxMem)
 					}
 
 					if recommendation != "" {
 						metrics["Recommendation"] = recommendation
 					}
 
-					var nodes []graph.Node
-					nodes = append(nodes, graph.Node{
-						ID:       aws.ToString(svc.ServiceArn),
-						NodeType: "ECS",
-						Data: map[string]interface{}{
-							"name":       svcName,
-							"isOrphaned": isOrphaned,
-						},
-					})
+					costWaste := 0.0
+					if isOrphaned {
+						costWaste = monthlyCost
+					}
 
-					results = append(results, scanner.ScanResult{
-						ResourceID:   svcName,
+					resID := svcArn
+					if resID == "" {
+						resID = svcName
+					}
+
+					results = append(results, BuildFinOpsResult(FinOpsResultParams{
+						ResourceID:   resID,
 						ResourceType: "ECS",
 						Region:       "regional",
+						RuleID:       RuleECSServiceIdle,
+						DisplayName:  svcName,
 						IsOrphaned:   isOrphaned,
+						Cost:         costWaste,
+						Title:        "Dormant or Over-Provisioned ECS Service",
+						Description:  fmt.Sprintf("ECS Service %s has 0 desired tasks or low utilization.", svcName),
+						Remediation:  "Delete unused ECS service via aws ecs delete-service",
 						Metrics:      metrics,
-						Nodes:        nodes,
-					})
+						Nodes: []model.Node{
+							{
+								ID:       resID,
+								NodeType: "ECS",
+								Data: map[string]interface{}{
+									"name":       svcName,
+									"isOrphaned": isOrphaned,
+								},
+							},
+						},
+					}))
 				}
 			}
 		}

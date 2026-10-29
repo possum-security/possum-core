@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
@@ -327,4 +327,17 @@ func hasForcedHTTPSInPolicy(policyStr string) bool {
 		}
 	}
 	return false
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *MessagingScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "messaging-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "messaging",
+		CheckIDs:      []string{"sns_topics_kms_encryption_at_rest_enabled", "sqs_queues_server_side_encryption_enabled"},
+	}
 }

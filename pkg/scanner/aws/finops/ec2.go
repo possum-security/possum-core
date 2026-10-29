@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
@@ -60,6 +60,9 @@ type EC2Scanner struct {
 	cwClient  *cloudwatch.Client
 }
 
+// Ensure EC2Scanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*EC2Scanner)(nil)
+
 func NewEC2Scanner(cfg aws.Config) *EC2Scanner {
 	return &EC2Scanner{
 		ec2Client: ec2.NewFromConfig(cfg),
@@ -69,6 +72,20 @@ func NewEC2Scanner(cfg aws.Config) *EC2Scanner {
 
 func (s *EC2Scanner) Name() string {
 	return "EC2-Advanced-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *EC2Scanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "ec2-advanced-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategoryFinOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostLight,
+		Description:   "Checks for zombie and over-provisioned EC2 instances",
+		Service:       "ec2",
+		CheckIDs:      []string{RuleEC2InstanceIdle},
+	}
 }
 
 func (s *EC2Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -176,15 +193,26 @@ func (s *EC2Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 				if instance.IamInstanceProfile != nil && instance.IamInstanceProfile.Arn != nil {
 					edges = append(edges, graph.Edge{From: instanceID, To: aws.ToString(instance.IamInstanceProfile.Arn), Relation: "HAS_ROLE"})
 				}
-				results = append(results, scanner.ScanResult{
+				costWaste := 0.0
+				if isOrphaned {
+					costWaste = monthlyCost
+				}
+
+				results = append(results, BuildFinOpsResult(FinOpsResultParams{
 					ResourceID:   instanceID,
 					ResourceType: "EC2",
 					Region:       aws.ToString(instance.Placement.AvailabilityZone),
+					RuleID:       RuleEC2InstanceIdle,
+					DisplayName:  instanceID,
 					IsOrphaned:   isOrphaned,
+					Cost:         costWaste,
+					Title:        "Idle or Stopped EC2 Instance",
+					Description:  "EC2 instance has minimal CPU utilization or has been stopped for >30 days.",
+					Remediation:  "Terminate stopped instance or downscale idle instance via aws ec2 terminate-instances",
 					Metrics:      metrics,
 					Nodes:        nodes,
 					Edges:        edges,
-				})
+				}))
 			}
 		}
 	}

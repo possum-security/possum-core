@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
-	graph "github.com/amirmahdy/possum-core/pkg/model"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
@@ -14,11 +14,12 @@ import (
 )
 
 // CloudFormationScanner detects orphaned, failed, and abandoned CloudFormation stacks.
-// Although CloudFormation stacks do not incur direct costs, orphaned and failed stacks
-// represent stale infrastructure, hold resource locks, and clutter cloud management.
 type CloudFormationScanner struct {
 	client *cloudformation.Client
 }
+
+// Ensure CloudFormationScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*CloudFormationScanner)(nil)
 
 func NewCloudFormationScanner(cfg aws.Config) *CloudFormationScanner {
 	return &CloudFormationScanner{
@@ -28,6 +29,19 @@ func NewCloudFormationScanner(cfg aws.Config) *CloudFormationScanner {
 
 func (s *CloudFormationScanner) Name() string {
 	return "CloudFormation-FinOps-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *CloudFormationScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "cloudformation-finops-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeRegional,
+		ExecutionCost: scanner.CostLight,
+		Service:       "cloudformation",
+		CheckIDs:      []string{RuleCloudFormationStackFailedOrAbandoned},
+	}
 }
 
 func (s *CloudFormationScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -65,7 +79,6 @@ func (s *CloudFormationScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 			var recommendation string
 			issueType := "Active Stack"
 
-			// Check 1: Failed / Rollback States (Zombies / Orphaned Stacks)
 			switch status {
 			case types.StackStatusRollbackComplete,
 				types.StackStatusRollbackFailed,
@@ -77,10 +90,9 @@ func (s *CloudFormationScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 				types.StackStatusImportRollbackComplete:
 				isOrphaned = true
 				issueType = "Failed/Rollback State"
-				recommendation = fmt.Sprintf("Delete orphaned CloudFormation stack in %s state to release resource locks and remove dead infrastructure.", status)
+				recommendation = fmt.Sprintf("Delete orphaned CloudFormation stack in %s state to release resource locks.", status)
 
 			default:
-				// Check 2: Stale / Abandoned Stacks (> 180 days with no updates or test/preview environments)
 				lastActivity := creationTime
 				if lastUpdatedTime != nil && lastUpdatedTime.After(*creationTime) {
 					lastActivity = lastUpdatedTime
@@ -88,7 +100,6 @@ func (s *CloudFormationScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 
 				if lastActivity != nil && time.Since(*lastActivity) > 180*24*time.Hour {
 					daysOld := int(time.Since(*lastActivity).Hours() / 24)
-					// Check if stack is tagged as test/ephemeral/dev
 					isEphemeral := false
 					for _, tag := range stack.Tags {
 						k := aws.ToString(tag.Key)
@@ -102,7 +113,7 @@ func (s *CloudFormationScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 					if isEphemeral {
 						isOrphaned = true
 						issueType = "Abandoned Ephemeral Stack"
-						recommendation = fmt.Sprintf("Review and delete stagnant ephemeral stack (inactive for %d days) to clean up unused infrastructure.", daysOld)
+						recommendation = fmt.Sprintf("Review and delete stagnant ephemeral stack (inactive for %d days).", daysOld)
 					} else {
 						issueType = "Stale Stack (>180d)"
 						recommendation = fmt.Sprintf("Audit stale CloudFormation stack (last updated %d days ago) for active usage.", daysOld)
@@ -113,7 +124,7 @@ func (s *CloudFormationScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 			metrics := map[string]interface{}{
 				"StackName":            stackName,
 				"Status":               string(status),
-				"EstimatedMonthlyCost": 0.0, // Stacks don't cost directly
+				"EstimatedMonthlyCost": 0.0,
 				"IssueType":            issueType,
 			}
 			if statusReason != "" {
@@ -129,15 +140,27 @@ func (s *CloudFormationScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 				metrics["Recommendation"] = recommendation
 			}
 
-			results = append(results, scanner.ScanResult{
-				ResourceID:   stackName,
+			resID := stackID
+			if resID == "" {
+				resID = stackName
+			}
+
+			results = append(results, BuildFinOpsResult(FinOpsResultParams{
+				ResourceID:   resID,
 				ResourceType: "CloudFormation",
 				Region:       "regional",
+				RuleID:       RuleCloudFormationStackFailedOrAbandoned,
+				DisplayName:  stackName,
 				IsOrphaned:   isOrphaned,
+				Cost:         0.0,
+				Severity:     model.SeverityLow,
+				Title:        "Failed or Abandoned CloudFormation Stack",
+				Description:  fmt.Sprintf("CloudFormation stack %s is in status %s (%s).", stackName, status, issueType),
+				Remediation:  "Delete failed stack via aws cloudformation delete-stack",
 				Metrics:      metrics,
-				Nodes: []graph.Node{
+				Nodes: []model.Node{
 					{
-						ID:       stackID,
+						ID:       resID,
 						NodeType: "CloudFormation",
 						Data: map[string]interface{}{
 							"name":       stackName,
@@ -146,7 +169,7 @@ func (s *CloudFormationScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 						},
 					},
 				},
-			})
+			}))
 		}
 	}
 

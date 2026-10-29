@@ -16,6 +16,7 @@ type Summary struct {
 	TotalEvaluated      int
 	PassCount           int
 	FailCount           int
+	SuppressedCount     int
 	CriticalCount       int
 	HighCount           int
 	MediumCount         int
@@ -34,6 +35,10 @@ func CalculateSummary(results []model.ScanResult) Summary {
 	for _, r := range results {
 		if r.Status == model.StatusPass {
 			s.PassCount++
+			continue
+		}
+		if r.Status == model.StatusSuppressed {
+			s.SuppressedCount++
 			continue
 		}
 

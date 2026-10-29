@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -417,4 +417,17 @@ func (s *VPCScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *VPCScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "vpc-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "vpc",
+		CheckIDs:      []string{"ec2_networkacl_allow_ingress_any_port", "ec2_networkacl_allow_ingress_tcp_port_22", "ec2_networkacl_allow_ingress_tcp_port_3389", "ec2_securitygroup_allow_ingress_from_internet_to_all_ports", "ec2_securitygroup_allow_ingress_from_internet_to_any_port", "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22", "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_3389", "ec2_securitygroup_default_restrict_traffic", "vpc_peering_routing_tables_with_least_privilege", "vpc_subnet_no_public_ip_by_default"},
+	}
 }

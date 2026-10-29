@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -344,4 +344,17 @@ func (s *ELBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		}
 	}
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *ELBScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "elb-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "elb",
+		CheckIDs:      []string{"elbv2_alb_drop_invalid_header_fields_enabled", "elbv2_insecure_ssl_ciphers", "elbv2_logging_enabled", "elbv2_ssl_listeners", "elbv2_waf_acl_attached"},
+	}
 }

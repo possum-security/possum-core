@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/accessanalyzer"
@@ -99,4 +99,17 @@ func (s *AccessAnalyzerScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *AccessAnalyzerScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "accessanalyzer-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeGlobal,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "accessanalyzer",
+		CheckIDs:      []string{"accessanalyzer_enabled"},
+	}
 }

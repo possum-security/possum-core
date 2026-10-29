@@ -115,6 +115,17 @@ func (f *SARIFFormatter) Format(w io.Writer, results []model.ScanResult) error {
 				desc = title
 			}
 
+			props := map[string]any{
+				"severity": string(r.Severity),
+				"category": string(r.Category),
+			}
+			if r.Remediation != "" {
+				props["remediation"] = r.Remediation
+			}
+			if r.CostWasteMo > 0 {
+				props["cost_waste_monthly"] = r.CostWasteMo
+			}
+
 			rules = append(rules, SARIFRuleEntry{
 				ID:   r.RuleID,
 				Name: strings.ReplaceAll(r.RuleID, "_", " "),
@@ -124,10 +135,8 @@ func (f *SARIFFormatter) Format(w io.Writer, results []model.ScanResult) error {
 				FullDescription: SARIFDescription{
 					Text: desc,
 				},
-				Properties: map[string]any{
-					"severity": string(r.Severity),
-					"category": string(r.Category),
-				},
+				HelpURI:    fmt.Sprintf("https://possum.io/rules/%s", r.RuleID),
+				Properties: props,
 			})
 		}
 

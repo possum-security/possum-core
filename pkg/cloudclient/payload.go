@@ -23,13 +23,13 @@ type GitContext struct {
 
 // SummaryPayload matches SecaaS ingestion contract.
 type SummaryPayload struct {
-	TotalEvaluated       int     `json:"total_evaluated"`
-	CriticalCount        int     `json:"critical_count"`
-	HighCount            int     `json:"high_count"`
-	MediumCount          int     `json:"medium_count"`
-	LowCount             int     `json:"low_count"`
-	PassCount            int     `json:"pass_count"`
-	MonthlyWasteDollars  float64 `json:"monthly_waste_dollars"`
+	TotalEvaluated      int     `json:"total_evaluated"`
+	CriticalCount       int     `json:"critical_count"`
+	HighCount           int     `json:"high_count"`
+	MediumCount         int     `json:"medium_count"`
+	LowCount            int     `json:"low_count"`
+	PassCount           int     `json:"pass_count"`
+	MonthlyWasteDollars float64 `json:"monthly_waste_dollars"`
 }
 
 // GraphFragments encapsulates 1-hop topology nodes and edges emitted by local checks.

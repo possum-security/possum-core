@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,6 +18,9 @@ type RDSScanner struct {
 	rdsClient *rds.Client
 	cwClient  *cloudwatch.Client
 }
+
+// Ensure RDSScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*RDSScanner)(nil)
 
 var rdsCostMap = map[string]float64{
 	"db.t3.micro":  0.017,
@@ -37,6 +41,19 @@ func NewRDSScanner(cfg aws.Config) *RDSScanner {
 
 func (s *RDSScanner) Name() string {
 	return "RDS-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *RDSScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "rds-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "rds",
+		CheckIDs:      []string{RuleRDSInstanceIdle},
+	}
 }
 
 func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -99,23 +116,33 @@ func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					metrics["IssueType"] = "Zombie DB"
 					metrics["Recommendation"] = "Take Snapshot & Delete DB (0 connections in 30 days)"
 				} else if maxCPU >= 75.0 {
-					// SCALE UP DETECT: CPU >= 75%
 					metrics["IssueType"] = "Scale Up (High Utilization)"
-					metrics["Recommendation"] = fmt.Sprintf("Scale Up RDS Instance Class — High CPU load (Max CPU: %.1f%% exceeds 75%% threshold). Upgrade %s to a larger instance class or enable Aurora Serverless / Read Replicas to avoid latency spikes.", maxCPU, instanceClass)
+					metrics["Recommendation"] = fmt.Sprintf("Scale Up RDS Instance Class — High CPU load (Max CPU: %.1f%% exceeds 75%% threshold).", maxCPU)
 				} else if maxCPU < 15.0 {
-					// RIGHT-SIZE DOWN DETECT: Max CPU never exceeds 15%
+					isOrphaned = true // Over-provisioned is flagged for FinOps savings
 					metrics["IssueType"] = "Over-Provisioned DB"
-					metrics["Recommendation"] = fmt.Sprintf("Downsize DB Instance Class — Max CPU is only %.1f%%. Downsize from %s to optimize database cost.", maxCPU, instanceClass)
+					metrics["Recommendation"] = fmt.Sprintf("Downsize DB Instance Class — Max CPU is only %.1f%%.", maxCPU)
 				}
 			}
 
-			results = append(results, scanner.ScanResult{
+			costWaste := 0.0
+			if isOrphaned {
+				costWaste = monthlyCost
+			}
+
+			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   instanceID,
 				ResourceType: "RDS",
 				Region:       aws.ToString(instance.AvailabilityZone),
-				IsOrphaned:   isOrphaned, // True if 0 connections
+				RuleID:       RuleRDSInstanceIdle,
+				DisplayName:  instanceID,
+				IsOrphaned:   isOrphaned,
+				Cost:         costWaste,
+				Title:        "Idle or Over-Provisioned RDS Instance",
+				Description:  "RDS instance has 0 connections or very low CPU utilization over 30 days.",
+				Remediation:  "Take a final snapshot and delete unused RDS instance, or downscale instance class.",
 				Metrics:      metrics,
-			})
+			}))
 		}
 	}
 

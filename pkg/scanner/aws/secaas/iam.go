@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -1216,4 +1216,17 @@ func hasPrivilegeEscalation(docStr string) bool {
 		}
 	}
 	return false
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *IAMScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "iam-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeGlobal,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "iam",
+		CheckIDs:      []string{"iam_avoid_root_usage", "iam_aws_attached_policy_no_administrative_privileges", "iam_check_saml_providers_sts", "iam_customer_attached_policy_no_administrative_privileges", "iam_inline_policy_no_administrative_privileges", "iam_no_expired_server_certificates_stored", "iam_no_root_access_key", "iam_password_policy_minimum_length_14", "iam_password_policy_reuse_24", "iam_policy_allows_privilege_escalation", "iam_policy_attached_only_to_group_or_roles", "iam_role_cross_account_readonlyaccess_policy", "iam_role_unused", "iam_root_hardware_mfa_enabled", "iam_root_mfa_enabled", "iam_rotate_access_key_90_days", "iam_support_role_created", "iam_user_accesskey_unused", "iam_user_administrator_access_policy", "iam_user_console_access_unused", "iam_user_mfa_enabled_console_access", "iam_user_no_setup_initial_access_key", "iam_user_two_active_access_key"},
+	}
 }

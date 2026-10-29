@@ -2,7 +2,9 @@ package finops
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,6 +18,9 @@ type CloudFrontScanner struct {
 	cwClient *cloudwatch.Client
 }
 
+// Ensure CloudFrontScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*CloudFrontScanner)(nil)
+
 func NewCloudFrontScanner(cfg aws.Config) *CloudFrontScanner {
 	return &CloudFrontScanner{
 		cfClient: cloudfront.NewFromConfig(cfg),
@@ -25,6 +30,19 @@ func NewCloudFrontScanner(cfg aws.Config) *CloudFrontScanner {
 
 func (s *CloudFrontScanner) Name() string {
 	return "CloudFront-FinOps-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *CloudFrontScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "cloudfront-finops-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeGlobal,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "cloudfront",
+		CheckIDs:      []string{RuleCloudFrontDistributionUnused},
+	}
 }
 
 func (s *CloudFrontScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -56,6 +74,7 @@ func (s *CloudFrontScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 			processedCount++
 
 			distID := aws.ToString(dist.Id)
+			domainName := aws.ToString(dist.DomainName)
 
 			reqs, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/CloudFront", "Requests", "DistributionId", distID, cwtypes.StatisticSum)
 			bytesDownloaded, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/CloudFront", "BytesDownloaded", "DistributionId", distID, cwtypes.StatisticSum)
@@ -71,6 +90,7 @@ func (s *CloudFrontScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 
 			metrics := map[string]interface{}{
 				"DistributionId":       distID,
+				"DomainName":           domainName,
 				"EstimatedMonthlyCost": monthlyCost,
 				"Requests_30Days":      reqs,
 			}
@@ -79,13 +99,24 @@ func (s *CloudFrontScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 				metrics["Recommendation"] = "Disable or delete unused CloudFront distribution"
 			}
 
-			results = append(results, scanner.ScanResult{
+			costWaste := 0.0
+			if isOrphaned {
+				costWaste = monthlyCost
+			}
+
+			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   distID,
 				ResourceType: "CloudFront",
 				Region:       "global",
+				RuleID:       RuleCloudFrontDistributionUnused,
+				DisplayName:  domainName,
 				IsOrphaned:   isOrphaned,
+				Cost:         costWaste,
+				Title:        "Unused CloudFront Distribution",
+				Description:  fmt.Sprintf("CloudFront distribution %s (%s) handled zero requests in the last 30 days.", distID, domainName),
+				Remediation:  "Disable and delete unused CloudFront distribution via aws cloudfront delete-distribution",
 				Metrics:      metrics,
-			})
+			}))
 		}
 	}
 	return results, nil

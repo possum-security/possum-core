@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/guardduty"
@@ -353,4 +353,17 @@ func (s *GuardDutyScanner) Scan(ctx context.Context) ([]scanner.ScanResult, erro
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *GuardDutyScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "guardduty-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "guardduty",
+		CheckIDs:      []string{"guardduty_ec2_malware_protection_enabled", "guardduty_eks_audit_log_enabled", "guardduty_is_enabled", "guardduty_lambda_protection_enabled", "guardduty_no_high_severity_findings", "guardduty_rds_protection_enabled", "guardduty_s3_protection_enabled"},
+	}
 }

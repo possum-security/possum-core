@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/amirmahdy/possum-core/pkg/model"
 	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -13,10 +14,14 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 )
 
+// ELBScanner checks for idle Application/Network Load Balancers that process zero traffic.
 type ELBScanner struct {
 	elbClient *elbv2.Client
 	cwClient  *cloudwatch.Client
 }
+
+// Ensure ELBScanner satisfies MetaScanner at compile time.
+var _ scanner.MetaScanner = (*ELBScanner)(nil)
 
 func NewELBScanner(cfg aws.Config) *ELBScanner {
 	return &ELBScanner{
@@ -27,6 +32,19 @@ func NewELBScanner(cfg aws.Config) *ELBScanner {
 
 func (s *ELBScanner) Name() string {
 	return "ELB-Scanner"
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *ELBScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "elb-scanner",
+		Name:          s.Name(),
+		Category:      model.CategoryFinOps,
+		Scope:         model.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "elb",
+		CheckIDs:      []string{RuleELBLoadBalancerIdle},
+	}
 }
 
 func (s *ELBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
@@ -55,10 +73,10 @@ func (s *ELBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			processedCount++
 
 			lbName := aws.ToString(lb.LoadBalancerName)
-			lbType := string(lb.Type) // "application", "network", or "gateway"
+			lbType := string(lb.Type)
+			lbArn := aws.ToString(lb.LoadBalancerArn)
 
-			// Base monthly cost for an ALB/NLB in us-east-1 is roughly $16.42
-			monthlyCost := 16.42
+			monthlyCost := 16.42 // Base monthly cost for ALB/NLB in us-east-1
 
 			metrics := map[string]interface{}{
 				"Type":                 lbType,
@@ -67,9 +85,7 @@ func (s *ELBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 				"EstimatedMonthlyCost": monthlyCost,
 			}
 
-			// We need the LoadBalancer dimension which looks like: app/my-load-balancer/50dc6c495c0c9188
-			// We can parse it from the ARN
-			arnParts := strings.Split(aws.ToString(lb.LoadBalancerArn), "/")
+			arnParts := strings.Split(lbArn, "/")
 			var cwDimensionValue string
 			if len(arnParts) >= 4 {
 				cwDimensionValue = strings.Join(arnParts[1:], "/")
@@ -100,8 +116,6 @@ func (s *ELBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 
 					if err == nil {
 						metrics["Requests_30Days"] = reqCount
-
-						// If zero traffic over 30 days, it is completely idle
 						if reqCount == 0 {
 							isOrphaned = true
 							recommendation = fmt.Sprintf("Delete Idle %s Load Balancer — estimated waste: $%.2f/month", strings.ToUpper(lbType), monthlyCost)
@@ -114,13 +128,29 @@ func (s *ELBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 				metrics["Recommendation"] = recommendation
 			}
 
-			results = append(results, scanner.ScanResult{
-				ResourceID:   lbName,
+			costWaste := 0.0
+			if isOrphaned {
+				costWaste = monthlyCost
+			}
+
+			resID := lbArn
+			if resID == "" {
+				resID = lbName
+			}
+
+			results = append(results, BuildFinOpsResult(FinOpsResultParams{
+				ResourceID:   resID,
 				ResourceType: "ELB",
 				Region:       "regional",
+				RuleID:       RuleELBLoadBalancerIdle,
+				DisplayName:  lbName,
 				IsOrphaned:   isOrphaned,
+				Cost:         costWaste,
+				Title:        "Idle Elastic Load Balancer (ELB)",
+				Description:  fmt.Sprintf("Load balancer %s received 0 requests/flows over the past 30 days.", lbName),
+				Remediation:  "Delete unused load balancer via aws elbv2 delete-load-balancer",
 				Metrics:      metrics,
-			})
+			}))
 		}
 	}
 

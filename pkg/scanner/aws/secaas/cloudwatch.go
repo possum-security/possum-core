@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
 	graph "github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/amirmahdy/possum-core/pkg/scanner"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
@@ -428,4 +428,17 @@ func (s *CloudWatchScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 	}
 
 	return results, nil
+}
+
+// Meta returns rich scanner metadata for execution planning and pre-filtering.
+func (s *CloudWatchScanner) Meta() scanner.ScannerMeta {
+	return scanner.ScannerMeta{
+		ID:            "cloudwatch-scanner",
+		Name:          s.Name(),
+		Category:      graph.CategorySecOps,
+		Scope:         graph.ScopeRegional,
+		ExecutionCost: scanner.CostMedium,
+		Service:       "cloudwatch",
+		CheckIDs:      []string{"cloudwatch_changes_to_network_acls_alarm_configured", "cloudwatch_changes_to_network_gateways_alarm_configured", "cloudwatch_changes_to_network_route_tables_alarm_configured", "cloudwatch_changes_to_vpcs_alarm_configured", "cloudwatch_log_metric_filter_and_alarm_for_aws_config_configuration_changes_enabled", "cloudwatch_log_metric_filter_and_alarm_for_cloudtrail_configuration_changes_enabled", "cloudwatch_log_metric_filter_authentication_failures", "cloudwatch_log_metric_filter_aws_organizations_changes", "cloudwatch_log_metric_filter_disable_or_scheduled_deletion_of_kms_cmk", "cloudwatch_log_metric_filter_for_s3_bucket_policy_changes", "cloudwatch_log_metric_filter_policy_changes", "cloudwatch_log_metric_filter_root_usage", "cloudwatch_log_metric_filter_security_group_changes", "cloudwatch_log_metric_filter_sign_in_without_mfa", "cloudwatch_log_metric_filter_unauthorized_api_calls"},
+	}
 }
