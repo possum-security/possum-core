@@ -1,4 +1,4 @@
-module github.com/amirmahdy/possum-core
+module github.com/possum-security/possum-core
 
 go 1.26.5
 

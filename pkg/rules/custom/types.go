@@ -1,7 +1,7 @@
 package custom
 
 import (
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 // ConditionNode represents a structured condition rule in declarative YAML policies.

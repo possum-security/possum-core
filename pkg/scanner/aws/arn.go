@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 // IsARN returns true if the given string has the prefix of a canonical AWS ARN.

@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
-	"github.com/amirmahdy/possum-core/pkg/output"
-	"github.com/amirmahdy/possum-core/pkg/scanner/iac"
+	"github.com/possum-security/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/output"
+	"github.com/possum-security/possum-core/pkg/scanner/iac"
 	"github.com/spf13/cobra"
 )
 

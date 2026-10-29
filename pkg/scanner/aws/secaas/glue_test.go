@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	scannertypes "github.com/amirmahdy/possum-core/pkg/scanner"
+	scannertypes "github.com/possum-security/possum-core/pkg/scanner"
 )
 
 type mockGlueClient struct {

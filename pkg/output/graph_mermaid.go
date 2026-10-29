@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 var idSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_]`)

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/rules"
+	"github.com/possum-security/possum-core/pkg/rules"
 	"github.com/spf13/cobra"
 )
 

@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 // JSONEnvelope encapsulates results along with metadata and summary.

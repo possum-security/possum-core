@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 // JUnitTestSuites represents the root testsuites XML element.

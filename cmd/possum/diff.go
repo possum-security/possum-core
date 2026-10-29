@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/diff"
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/diff"
+	"github.com/possum-security/possum-core/pkg/model"
 	"github.com/spf13/cobra"
 )
 

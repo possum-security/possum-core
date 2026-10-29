@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
-	"github.com/amirmahdy/possum-core/pkg/rules"
+	"github.com/possum-security/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/rules"
 )
 
 // ProgressCallback notifies callers about scanner execution lifecycle.

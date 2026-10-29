@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/amirmahdy/possum-core/pkg/scanner"
-	"github.com/amirmahdy/possum-core/pkg/scanner/aws/secaas"
+	"github.com/possum-security/possum-core/pkg/scanner"
+	"github.com/possum-security/possum-core/pkg/scanner/aws/secaas"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"

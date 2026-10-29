@@ -5,7 +5,7 @@ paths: ["**/*.go"]
 # Go Code Conventions (`possum-core`)
 
 ## Code Style & Idioms
-- Target Go version: `go 1.26.5` (module `github.com/amirmahdy/possum-core`).
+- Target Go version: `go 1.26.5` (module `github.com/possum-security/possum-core`).
 - Keep packages cohesive and avoid cyclic imports; shared domain primitives (`ScanResult`, `Node`, `Edge`, `Severity`, `Status`, `Category`, `Scope`) reside in `pkg/model` and are aliased in `pkg/scanner` where appropriate.
 - Always dereference AWS SDK pointer fields safely using `aws.ToString`, `aws.ToInt64`, `aws.ToBool`, etc., and construct pointers with `aws.String`, `aws.Int64`, etc.
 - Exported types, constructors, and functions must have clear GoDoc comments starting with the symbol name.

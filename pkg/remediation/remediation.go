@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 // ScriptOptions configures remediation script generation.

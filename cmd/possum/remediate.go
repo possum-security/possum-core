@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
-	"github.com/amirmahdy/possum-core/pkg/remediation"
+	"github.com/possum-security/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/remediation"
 	"github.com/spf13/cobra"
 )
 

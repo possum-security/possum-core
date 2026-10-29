@@ -1,6 +1,6 @@
 # Possum Core — Claude Code Guide
 
-Possum Core (`github.com/amirmahdy/possum-core`) is a fast, developer-first Cloud Security (SecaaS/CSPM/IAM/DSPM) and FinOps Waste Scanner written in Go (1.26+). It correlates security misconfigurations, attack paths, and cloud infrastructure waste into a unified developer workflow across live AWS accounts and Infrastructure-as-Code (Terraform, CloudFormation, Kubernetes).
+Possum Core (`github.com/possum-security/possum-core`) is a fast, developer-first Cloud Security (SecaaS/CSPM/IAM/DSPM) and FinOps Waste Scanner written in Go (1.26+). It correlates security misconfigurations, attack paths, and cloud infrastructure waste into a unified developer workflow across live AWS accounts and Infrastructure-as-Code (Terraform, CloudFormation, Kubernetes).
 
 ## Common Commands
 

@@ -3,8 +3,8 @@ package finops
 import (
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
-	"github.com/amirmahdy/possum-core/pkg/scanner"
+	"github.com/possum-security/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/scanner"
 )
 
 // Canonical FinOps Rule IDs for Possum Core.

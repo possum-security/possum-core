@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 // HTMLFormatter renders a standalone, zero-dependency offline HTML report and attack graph.

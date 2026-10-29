@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 // Model represents the state of the interactive Terminal UI.

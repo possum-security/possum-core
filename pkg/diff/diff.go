@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 // Report contains comparison results between a baseline scan and a head scan.
@@ -177,7 +177,7 @@ func (rep *Report) FormatMarkdownPR(w io.Writer) error {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("> *Generated automatically by [Possum Core](https://github.com/amirmahdy/possum-core)*\n")
+	sb.WriteString("> *Generated automatically by [Possum Core](https://github.com/possum-security/possum-core)*\n")
 
 	_, err := io.WriteString(w, sb.String())
 	return err

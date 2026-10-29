@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 )
 
 // ResourceChange represents a planned resource modification in a Terraform JSON plan.

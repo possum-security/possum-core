@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amirmahdy/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/model"
 	"gopkg.in/yaml.v3"
 )
 

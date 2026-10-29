@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/amirmahdy/possum-core/pkg/cloudclient"
+	"github.com/possum-security/possum-core/pkg/cloudclient"
 	"github.com/spf13/cobra"
 )
 
