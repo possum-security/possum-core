@@ -76,6 +76,17 @@ func runScanAWS(cmd *cobra.Command, args []string) error {
 	}
 	applyConfigFileDefaults(fileCfg, cmd)
 
+	// 1a. If --output was passed with a format name (e.g. --output json), treat it as format
+	if awsOutputFile != "" {
+		switch strings.ToLower(strings.TrimSpace(awsOutputFile)) {
+		case "json", "sarif", "junit", "csv", "mermaid", "html", "table":
+			if !cmd.Flags().Changed("format") && !cmd.Flags().Changed("output-format") {
+				awsFormat = strings.ToLower(strings.TrimSpace(awsOutputFile))
+				awsOutputFile = ""
+			}
+		}
+	}
+
 	// 1b. Validate CLI/config options before making network/AWS calls
 	var failThreshold model.Severity
 	if awsFailOn != "" {

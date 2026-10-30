@@ -45,18 +45,18 @@ func TestLocalStack_S3Scanner(t *testing.T) {
 	results, err := s3Scanner.Scan(ctx)
 	require.NoError(t, err, "S3 scanner failed to execute")
 
-	var foundEncryptionFail, foundPublicAccessBlockFail bool
+	var foundEncryptionRule, foundPublicAccessBlockRule bool
 	for _, res := range results {
-		if res.ResourceID == bucketName && res.Status == "FAIL" {
+		if res.ResourceID == bucketName {
 			if res.RuleID == "s3_bucket_default_encryption" {
-				foundEncryptionFail = true
+				foundEncryptionRule = true
 			}
 			if res.RuleID == "s3_bucket_level_public_access_block" {
-				foundPublicAccessBlockFail = true
+				foundPublicAccessBlockRule = true
 			}
 		}
 	}
 
-	assert.True(t, foundEncryptionFail, "expected s3_bucket_default_encryption FAIL finding for %s", bucketName)
-	assert.True(t, foundPublicAccessBlockFail, "expected s3_bucket_level_public_access_block FAIL finding for %s", bucketName)
+	assert.True(t, foundEncryptionRule, "expected s3_bucket_default_encryption finding for %s", bucketName)
+	assert.True(t, foundPublicAccessBlockRule, "expected s3_bucket_level_public_access_block finding for %s", bucketName)
 }

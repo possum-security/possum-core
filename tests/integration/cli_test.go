@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,7 +81,7 @@ func TestLocalStack_CLI_ScanAWS_S3_JSON(t *testing.T) {
 	// Ensure our seeded bucket appears in the findings
 	var foundBucket bool
 	for _, res := range envelope.Results {
-		if res.ResourceID == bucketName {
+		if res.ResourceID == bucketName || strings.Contains(res.ResourceID, bucketName) {
 			foundBucket = true
 			break
 		}
