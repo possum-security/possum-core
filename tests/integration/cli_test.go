@@ -52,8 +52,8 @@ func TestLocalStack_CLI_ScanAWS_S3_JSON(t *testing.T) {
 	buildOut, err := buildCmd.CombinedOutput()
 	require.NoError(t, err, "failed to build possum binary: %s", string(buildOut))
 
-	// Execute: possum scan aws --services s3 --regions us-east-1 --output json
-	cmd := exec.Command(binPath, "scan", "aws", "--services", "s3", "--regions", "us-east-1", "--output", "json")
+	// Execute: possum scan aws --services s3 --regions us-east-1 --format json
+	cmd := exec.Command(binPath, "scan", "aws", "--services", "s3", "--regions", "us-east-1", "--format", "json")
 	cmd.Env = append(os.Environ(),
 		"AWS_ENDPOINT_URL="+endpointURL,
 		"AWS_REGION=us-east-1",
