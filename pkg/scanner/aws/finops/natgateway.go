@@ -14,10 +14,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
+// NATGatewayDescribeAPI defines the EC2 API subset needed by NATGatewayScanner.
+type NATGatewayDescribeAPI interface {
+	ec2.DescribeNatGatewaysAPIClient
+}
+
 // NATGatewayScanner checks for idle NAT Gateways that are wasting money.
 type NATGatewayScanner struct {
-	ec2Client *ec2.Client
-	cwClient  *cloudwatch.Client
+	ec2Client NATGatewayDescribeAPI
+	cwClient  CloudWatchMetricAPI
+	region    string
 }
 
 // Ensure NATGatewayScanner satisfies MetaScanner at compile time.
@@ -27,6 +33,19 @@ func NewNATGatewayScanner(cfg aws.Config) *NATGatewayScanner {
 	return &NATGatewayScanner{
 		ec2Client: ec2.NewFromConfig(cfg),
 		cwClient:  cloudwatch.NewFromConfig(cfg),
+		region:    cfg.Region,
+	}
+}
+
+func NewNATGatewayScannerWithClients(ec2Client NATGatewayDescribeAPI, cwClient CloudWatchMetricAPI, region ...string) *NATGatewayScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &NATGatewayScanner{
+		ec2Client: ec2Client,
+		cwClient:  cwClient,
+		region:    r,
 	}
 }
 
@@ -96,15 +115,16 @@ func (s *NATGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 				cwtypes.StatisticSum,
 			)
 
-			if err == nil {
-				metrics["BytesOut_30Days"] = bytesOut
-			}
-
 			isIdle := false
-			// FinOps check: If a NAT Gateway processes less than 10MB in a month, it's virtually idle.
-			if err == nil && bytesOut < 10485760 {
-				isIdle = true
-				metrics["Recommendation"] = fmt.Sprintf("Delete Idle NAT Gateway — estimated waste: $%.2f/month", monthlyCost)
+			if err != nil {
+				metrics["MetricFetchError"] = err.Error()
+			} else {
+				metrics["BytesOut_30Days"] = bytesOut
+				// FinOps check: If a NAT Gateway processes less than 10MB in a month, it's virtually idle.
+				if !isResourceTooYoung(nat.CreateTime) && bytesOut < 10485760 {
+					isIdle = true
+					metrics["Recommendation"] = fmt.Sprintf("Delete Idle NAT Gateway — estimated waste: $%.2f/month", monthlyCost)
+				}
 			}
 
 			costWaste := 0.0
@@ -115,7 +135,7 @@ func (s *NATGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   natID,
 				ResourceType: "NAT_GATEWAY",
-				Region:       "regional",
+				Region:       resolveRegion(s.region, "regional"),
 				RuleID:       RuleNATGatewayIdle,
 				DisplayName:  natID,
 				IsOrphaned:   isIdle,

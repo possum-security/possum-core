@@ -1,5 +1,5 @@
 {
-  "total_checks": 655,
+  "total_checks": 674,
   "total_services": 89,
   "services": [
     "accessanalyzer",
@@ -203,7 +203,9 @@
           "Url": "https://hub.prowler.com/check/account_maintain_current_contact_details"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_account_security_onboarding_aws",
         "aws_ai_security_framework_aws",
@@ -237,7 +239,7 @@
         "Code": {
           "CLI": "",
           "NativeIaC": "",
-          "Other": "1. Sign in to the AWS Management Console with a user that can edit account contacts (root, or IAM with account:PutAlternateContact)\n2. In the upper right, click your account name > Account\n3. Scroll to \"Alternate contacts\" and click Edit\n4. Add all three contacts with unique details:\n   - Billing contact (distinct name, email, phone)\n   - Operations contact (distinct name, email, phone)\n   - Security contact (distinct name, email, phone)\n5. Ensure each contact’s email/phone differs from each other and from the primary (root) contact, then click Update",
+          "Other": "1. Sign in to the AWS Management Console with a user that can edit account contacts (root, or IAM with account:PutAlternateContact)\n2. In the upper right, click your account name > Account\n3. Scroll to \"Alternate contacts\" and click Edit\n4. Add all three contacts with unique details:\n   - Billing contact (distinct name, email, phone)\n   - Operations contact (distinct name, email, phone)\n   - Security contact (distinct name, email, phone)\n5. Ensure each contact\u2019s email/phone differs from each other and from the primary (root) contact, then click Update",
           "Terraform": "```hcl\n# Set distinct alternate contacts for SECURITY, BILLING, and OPERATIONS\n# Critical: each resource sets a required contact type to satisfy the check\n\nresource \"aws_account_alternate_contact\" \"security\" {\n  alternate_contact_type = \"SECURITY\"  # Sets SECURITY contact\n  email_address          = \"security@example.com\"\n  name                   = \"Security Team\"\n  phone_number           = \"+1-555-0100\"\n  title                  = \"Security\"\n}\n\nresource \"aws_account_alternate_contact\" \"billing\" {\n  alternate_contact_type = \"BILLING\"   # Sets BILLING contact\n  email_address          = \"billing@example.com\"\n  name                   = \"Billing Team\"\n  phone_number           = \"+1-555-0101\"\n  title                  = \"Billing\"\n}\n\nresource \"aws_account_alternate_contact\" \"operations\" {\n  alternate_contact_type = \"OPERATIONS\" # Sets OPERATIONS contact\n  email_address          = \"operations@example.com\"\n  name                   = \"Operations Team\"\n  phone_number           = \"+1-555-0102\"\n  title                  = \"Operations\"\n}\n```"
         },
         "Recommendation": {
@@ -277,7 +279,9 @@
           "Url": "https://hub.prowler.com/check/account_security_contact_information_is_registered"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_account_security_onboarding_aws",
         "aws_ai_security_framework_aws",
@@ -321,7 +325,9 @@
           "Url": "https://hub.prowler.com/check/account_security_questions_are_registered_in_the_aws_account"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_well_architected_framework_security_pillar_aws",
         "cis_1.4_aws",
@@ -355,7 +361,9 @@
           "Url": "https://hub.prowler.com/check/acm_certificates_expiration_check"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_foundational_security_best_practices_aws",
         "aws_well_architected_framework_security_pillar_aws",
@@ -853,7 +861,9 @@
           "Url": "https://hub.prowler.com/check/apigateway_restapi_waf_acl_attached"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_account_security_onboarding_aws",
         "aws_ai_security_framework_aws",
@@ -998,7 +1008,9 @@
           "Url": "https://hub.prowler.com/check/appstream_fleet_maximum_session_duration"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_well_architected_framework_security_pillar_aws",
         "c5_aws",
@@ -1028,7 +1040,9 @@
           "Url": "https://hub.prowler.com/check/appstream_fleet_session_disconnect_timeout"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_well_architected_framework_security_pillar_aws",
         "c5_aws",
@@ -1487,11 +1501,11 @@
         "Code": {
           "CLI": "aws lambda update-function-configuration --function-name <function-name> --kms-key-arn <cmk-arn>",
           "NativeIaC": "```yaml\nAWSTemplateFormatVersion: '2010-09-09'\nResources:\n  LambdaFunction:\n    Type: AWS::Lambda::Function\n    Properties:\n      FunctionName: <example_resource_name>\n      Role: <example_role_arn>\n      Handler: index.handler\n      Runtime: python3.12\n      Code:\n        S3Bucket: <example_code_bucket>\n        S3Key: <example_code_key>\n      KmsKeyArn: <cmk-arn>\n      Environment:\n        Variables:\n          MY_CONFIG: <value>\n```",
-          "Other": "1. Create or identify a KMS CMK in the same region as the function\n2. Grant the Lambda execution role `kms:Decrypt` and `kms:GenerateDataKey` on the key\n3. In the Lambda console go to Configuration > Environment variables > Edit\n4. Under Encryption configuration, select your CMK\n5. Save — Lambda re-encrypts all environment variables with the chosen key",
+          "Other": "1. Create or identify a KMS CMK in the same region as the function\n2. Grant the Lambda execution role `kms:Decrypt` and `kms:GenerateDataKey` on the key\n3. In the Lambda console go to Configuration > Environment variables > Edit\n4. Under Encryption configuration, select your CMK\n5. Save \u2014 Lambda re-encrypts all environment variables with the chosen key",
           "Terraform": "```hcl\nresource \"aws_kms_key\" \"lambda_env\" {\n  description             = \"Lambda env var encryption key\"\n  enable_key_rotation     = true\n  deletion_window_in_days = 30\n}\n\nresource \"aws_lambda_function\" \"example\" {\n  function_name = \"<example_resource_name>\"\n  role          = \"<example_role_arn>\"\n  handler       = \"index.handler\"\n  runtime       = \"python3.12\"\n  filename      = \"<example_package.zip>\"\n  kms_key_arn   = aws_kms_key.lambda_env.arn\n\n  environment {\n    variables = {\n      MY_CONFIG = \"<value>\"\n    }\n  }\n}\n```"
         },
         "Recommendation": {
-          "Text": "Encrypt Lambda environment variables with a customer-managed KMS key to maintain full control over key lifecycle and access.\n- Create a dedicated KMS key per application or per function for blast-radius isolation\n- Enable **automatic key rotation** (`EnableKeyRotation: true`)\n- Grant only the Lambda execution role decrypt access via a key policy condition on `kms:ViaService`\n- Prefer **AWS Secrets Manager** or **SSM Parameter Store (SecureString)** for secrets — environment variables should hold non-secret configuration only",
+          "Text": "Encrypt Lambda environment variables with a customer-managed KMS key to maintain full control over key lifecycle and access.\n- Create a dedicated KMS key per application or per function for blast-radius isolation\n- Enable **automatic key rotation** (`EnableKeyRotation: true`)\n- Grant only the Lambda execution role decrypt access via a key policy condition on `kms:ViaService`\n- Prefer **AWS Secrets Manager** or **SSM Parameter Store (SecureString)** for secrets \u2014 environment variables should hold non-secret configuration only",
           "Url": "https://hub.prowler.com/check/awslambda_function_env_vars_not_encrypted_with_cmk"
         }
       },
@@ -1581,7 +1595,7 @@
       "SubServiceName": "",
       "Severity": "medium",
       "ResourceType": "AwsLambdaFunction",
-      "Description": "**AWS Lambda functions** have a **Dead Letter Queue (DLQ)** configured — an SQS queue or SNS topic that receives records of failed asynchronous invocations.\n\nWithout a DLQ, failed invocations are silently discarded after exhausting retries.",
+      "Description": "**AWS Lambda functions** have a **Dead Letter Queue (DLQ)** configured \u2014 an SQS queue or SNS topic that receives records of failed asynchronous invocations.\n\nWithout a DLQ, failed invocations are silently discarded after exhausting retries.",
       "Risk": "Without a DLQ, failed asynchronous invocations are permanently lost. This harms **availability** by hiding processing failures, and weakens **integrity** by making it impossible to replay or audit unprocessed events.\n\nIn security-sensitive pipelines (e.g., audit log processors, alerting functions), silent failure can mask security events entirely.",
       "Remediation": {
         "Code": {
@@ -1809,7 +1823,7 @@
       "Severity": "high",
       "ResourceType": "AwsLambdaFunction",
       "Description": "**AWS Lambda functions** use only **layers published within the same AWS account**, rather than layers owned by external accounts.\n\nA Lambda layer bundles shared code or dependencies that are injected into the function execution environment at runtime.",
-      "Risk": "A layer from an external account is a **supply chain dependency outside your control**. If that account is compromised or the layer is updated maliciously, every consumer function executes attacker code with its IAM role — a direct **privilege escalation** and **lateral movement** path across all functions using that layer.",
+      "Risk": "A layer from an external account is a **supply chain dependency outside your control**. If that account is compromised or the layer is updated maliciously, every consumer function executes attacker code with its IAM role \u2014 a direct **privilege escalation** and **lateral movement** path across all functions using that layer.",
       "Remediation": {
         "Code": {
           "CLI": "# Copy the cross-account layer version into your own account first:\naws lambda publish-layer-version --layer-name <layer-name> --zip-file fileb://<layer.zip>\n# Then update the function to use your own layer ARN:\naws lambda update-function-configuration --function-name <function-name> --layers <your-account-layer-arn>",
@@ -1848,7 +1862,9 @@
           "Url": "https://hub.prowler.com/check/awslambda_function_using_supported_runtimes"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "asd_essential_eight_aws",
         "aws_ai_security_framework_aws",
@@ -2177,7 +2193,7 @@
       "Severity": "high",
       "ResourceType": "Other",
       "Description": "**Bedrock Agent** execution roles (`agentResourceRoleArn`) should grant only the minimum permissions the agent needs. The evaluation FAILs when the role has an AWS-managed `*FullAccess` policy attached, has an inline statement allowing broad actions on `Resource: \"*\"`, or has no permissions boundary configured.",
-      "Risk": "An overly permissive **Bedrock Agent** execution role turns a successful **prompt injection** into AWS privilege escalation. A model coerced into calling tools can invoke any API the role allows — reading secrets, modifying IAM, exfiltrating data from S3, or pivoting laterally. **Least privilege** plus a **permissions boundary** keeps the blast radius bounded even when guardrails fail.",
+      "Risk": "An overly permissive **Bedrock Agent** execution role turns a successful **prompt injection** into AWS privilege escalation. A model coerced into calling tools can invoke any API the role allows \u2014 reading secrets, modifying IAM, exfiltrating data from S3, or pivoting laterally. **Least privilege** plus a **permissions boundary** keeps the blast radius bounded even when guardrails fail.",
       "Remediation": {
         "Code": {
           "CLI": "aws iam put-role-permissions-boundary --role-name <execution_role_name> --permissions-boundary <boundary_policy_arn>",
@@ -2262,7 +2278,7 @@
       "SubServiceName": "",
       "Severity": "high",
       "ResourceType": "AwsIamUser",
-      "Description": "AWS recommends Amazon Bedrock **long-term API keys** only for **exploration**; production workloads should use **short-term API keys** (session-scoped, valid up to **12 hours**). This check fails for any active long-term Bedrock API key, escalating to `critical` severity when configured to **never expire**. Already-expired keys pass — they can no longer authenticate.",
+      "Description": "AWS recommends Amazon Bedrock **long-term API keys** only for **exploration**; production workloads should use **short-term API keys** (session-scoped, valid up to **12 hours**). This check fails for any active long-term Bedrock API key, escalating to `critical` severity when configured to **never expire**. Already-expired keys pass \u2014 they can no longer authenticate.",
       "Risk": "Long-term Bedrock API keys persist beyond a session until their stored expiration, and keys set to **never expire** grant indefinite access until manually revoked, enabling unauthorized inference, uncontrolled usage and spend, and activity that continues past timely revocation.",
       "Remediation": {
         "Code": {
@@ -2272,7 +2288,7 @@
           "Terraform": ""
         },
         "Recommendation": {
-          "Text": "Use short-term Amazon Bedrock API keys for any non-exploratory workload — they are bound to the IAM principal's session, valid for at most 12 hours, scoped to a single Region, and can be auto-refreshed by the SDK. For existing long-term keys, delete the underlying IAM service-specific credential. If a long-term key must be retained for an exploration scenario, set an explicit short expiration and never select `never expire`.",
+          "Text": "Use short-term Amazon Bedrock API keys for any non-exploratory workload \u2014 they are bound to the IAM principal's session, valid for at most 12 hours, scoped to a single Region, and can be auto-refreshed by the SDK. For existing long-term keys, delete the underlying IAM service-specific credential. If a long-term key must be retained for an exploration scenario, set an explicit short expiration and never select `never expire`.",
           "Url": "https://hub.prowler.com/check/bedrock_api_key_no_long_term_credentials"
         }
       },
@@ -2820,7 +2836,9 @@
           "Url": "https://hub.prowler.com/check/cloudfront_distributions_default_root_object"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_foundational_security_best_practices_aws",
         "kisa_isms_p_2023_aws",
@@ -5487,7 +5505,7 @@
         "Code": {
           "CLI": "aws codestar-connections create-connection --provider-type GitHub --connection-name my-github-connection\naws codepipeline update-pipeline --pipeline file://pipeline-config.json",
           "NativeIaC": "```yaml\n# CloudFormation: Configure pipeline with private repository via CodeStar Connection\nResources:\n  MyConnection:\n    Type: AWS::CodeStarConnections::Connection\n    Properties:\n      ConnectionName: my-github-connection\n      ProviderType: GitHub  # or GitLab\n\n  MyPipeline:\n    Type: AWS::CodePipeline::Pipeline\n    Properties:\n      Stages:\n        - Name: Source\n          Actions:\n            - Name: SourceAction\n              ActionTypeId:\n                Category: Source\n                Owner: AWS\n                Provider: CodeStarSourceConnection\n                Version: 1\n              Configuration:\n                ConnectionArn: !GetAtt MyConnection.ConnectionArn\n                FullRepositoryId: myorg/myrepo  # Private repository\n                BranchName: main\n```",
-          "Other": "1. In the AWS Console, navigate to **Developer Tools** → **Connections**\n2. Click **Create connection**\n3. Choose provider (GitHub or GitLab) and click **Connect**\n4. Authorize AWS to access your private repositories\n5. Navigate to **CodePipeline** → **Pipelines** and select your pipeline\n6. Click **Edit**\n7. In the **Source** stage, click **Edit action**\n8. Change **Action provider** to **GitHub (Version 2)** or **GitLab**\n9. Select **Connection** and choose the connection created in step 4\n10. Configure **Repository name** (private repo) and **Branch name**\n11. Click **Done** and **Save** the pipeline",
+          "Other": "1. In the AWS Console, navigate to **Developer Tools** \u2192 **Connections**\n2. Click **Create connection**\n3. Choose provider (GitHub or GitLab) and click **Connect**\n4. Authorize AWS to access your private repositories\n5. Navigate to **CodePipeline** \u2192 **Pipelines** and select your pipeline\n6. Click **Edit**\n7. In the **Source** stage, click **Edit action**\n8. Change **Action provider** to **GitHub (Version 2)** or **GitLab**\n9. Select **Connection** and choose the connection created in step 4\n10. Configure **Repository name** (private repo) and **Branch name**\n11. Click **Done** and **Save** the pipeline",
           "Terraform": "```hcl\n# Terraform: Configure pipeline with private repository via CodeStar Connection\nresource \"aws_codestarconnections_connection\" \"github\" {\n  name          = \"my-github-connection\"\n  provider_type = \"GitHub\"  # or \"GitLab\"\n}\n\nresource \"aws_codepipeline\" \"example\" {\n  name     = \"my-pipeline\"\n  role_arn = aws_iam_role.codepipeline.arn\n\n  stage {\n    name = \"Source\"\n\n    action {\n      name             = \"Source\"\n      category         = \"Source\"\n      owner            = \"AWS\"\n      provider         = \"CodeStarSourceConnection\"\n      version          = \"1\"\n      output_artifacts = [\"source_output\"]\n\n      configuration = {\n        ConnectionArn    = aws_codestarconnections_connection.github.arn\n        FullRepositoryId = \"myorg/myrepo\"  # Private repository\n        BranchName       = \"main\"\n      }\n    }\n  }\n}\n```"
         },
         "Recommendation": {
@@ -6109,8 +6127,8 @@
       "SubServiceName": "",
       "Severity": "medium",
       "ResourceType": "Other",
-      "Description": "**AWS Config recorders** are evaluated for use of the service‑linked IAM role `AWSServiceRoleForConfig` linked to `config.amazonaws.com` rather than a custom role.\n\nThe evaluation inspects active recorders and their role ARN to confirm the AWS‑managed service‑linked role is in use.",
-      "Risk": "Using a custom or incorrect role can break recording or create blind spots, undermining the **integrity** and **availability** of configuration history. Over‑privileged roles weaken **least privilege**, increasing risk of unauthorized access, stealthy changes, and delayed incident response.",
+      "Description": "**AWS Config recorders** are evaluated for use of the service\u2011linked IAM role `AWSServiceRoleForConfig` linked to `config.amazonaws.com` rather than a custom role.\n\nThe evaluation inspects active recorders and their role ARN to confirm the AWS\u2011managed service\u2011linked role is in use.",
+      "Risk": "Using a custom or incorrect role can break recording or create blind spots, undermining the **integrity** and **availability** of configuration history. Over\u2011privileged roles weaken **least privilege**, increasing risk of unauthorized access, stealthy changes, and delayed incident response.",
       "Remediation": {
         "Code": {
           "CLI": "aws configservice put-configuration-recorder --configuration-recorder name=<RECORDER_NAME>,roleARN=arn:<PARTITION>:iam::<ACCOUNT_ID>:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig",
@@ -6119,7 +6137,7 @@
           "Terraform": "```hcl\nresource \"aws_config_configuration_recorder\" \"example_resource\" {\n  name     = \"example_resource\"\n  role_arn = \"arn:<PARTITION>:iam::<ACCOUNT_ID>:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig\"  # This line fixes the security issue\n}\n```"
         },
         "Recommendation": {
-          "Text": "Use the AWS‑managed service‑linked role `AWSServiceRoleForConfig` for all recorders to enforce **least privilege** and consistent trust.\n\nAvoid custom roles; restrict who can modify the recorder or role; monitor for drift and ensure recording remains enabled as part of **defense in depth**.",
+          "Text": "Use the AWS\u2011managed service\u2011linked role `AWSServiceRoleForConfig` for all recorders to enforce **least privilege** and consistent trust.\n\nAvoid custom roles; restrict who can modify the recorder or role; monitor for drift and ensure recording remains enabled as part of **defense in depth**.",
           "Url": "https://hub.prowler.com/check/config_recorder_using_aws_service_role"
         }
       },
@@ -8238,7 +8256,9 @@
           "Url": "https://hub.prowler.com/check/ec2_instance_older_than_specific_days"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "asd_essential_eight_aws",
         "aws_foundational_security_best_practices_aws",
@@ -9029,7 +9049,9 @@
           "Url": "https://hub.prowler.com/check/ec2_instance_stopped_older_than_specific_days"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": []
     },
     "ec2_instance_uses_single_eni": {
@@ -10189,7 +10211,9 @@
           "Url": "https://hub.prowler.com/check/ec2_securitygroup_from_launch_wizard"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_well_architected_framework_security_pillar_aws",
         "ens_rd2022_aws",
@@ -11531,7 +11555,9 @@
           "Url": "https://hub.prowler.com/check/elasticache_redis_cluster_auto_minor_version_upgrades"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "asd_essential_eight_aws",
         "aws_foundational_security_best_practices_aws",
@@ -11949,7 +11975,9 @@
           "Url": "https://hub.prowler.com/check/elb_desync_mitigation_mode"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "kisa_isms_p_2023_aws",
         "kisa_isms_p_2023_korean_aws",
@@ -12206,7 +12234,9 @@
           "Url": "https://hub.prowler.com/check/elbv2_alb_drop_invalid_header_fields_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_foundational_security_best_practices_aws"
       ]
@@ -12304,7 +12334,9 @@
           "Url": "https://hub.prowler.com/check/elbv2_desync_mitigation_mode"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_foundational_security_best_practices_aws",
         "aws_well_architected_framework_security_pillar_aws",
@@ -12632,7 +12664,9 @@
           "Url": "https://hub.prowler.com/check/elbv2_waf_acl_attached"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_account_security_onboarding_aws",
         "aws_foundational_security_best_practices_aws",
@@ -13017,7 +13051,9 @@
           "Url": "https://hub.prowler.com/check/fsx_file_system_copy_tags_to_volumes_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "c5_aws",
         "iso27001_2022_aws",
@@ -13565,7 +13601,9 @@
           "Url": "https://hub.prowler.com/check/guardduty_ai_protection_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_ai_security_framework_aws"
       ]
@@ -13591,7 +13629,9 @@
           "Url": "https://hub.prowler.com/check/guardduty_centrally_managed"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_account_security_onboarding_aws",
         "aws_ai_security_framework_aws",
@@ -13652,7 +13692,9 @@
           "Url": "https://hub.prowler.com/check/guardduty_ec2_malware_protection_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_ai_security_framework_aws",
         "c5_aws",
@@ -13719,7 +13761,9 @@
           "Url": "https://hub.prowler.com/check/guardduty_eks_runtime_monitoring_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_ai_security_framework_aws",
         "c5_aws",
@@ -13807,7 +13851,9 @@
           "Url": "https://hub.prowler.com/check/guardduty_lambda_protection_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_ai_security_framework_aws",
         "c5_aws",
@@ -13839,7 +13885,9 @@
           "Url": "https://hub.prowler.com/check/guardduty_no_high_severity_findings"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_account_security_onboarding_aws",
         "aws_ai_security_framework_aws",
@@ -13888,7 +13936,9 @@
           "Url": "https://hub.prowler.com/check/guardduty_rds_protection_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_ai_security_framework_aws",
         "aws_foundational_security_best_practices_aws",
@@ -13921,7 +13971,9 @@
           "Url": "https://hub.prowler.com/check/guardduty_runtime_monitoring_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_ai_security_framework_aws"
       ]
@@ -13947,7 +13999,9 @@
           "Url": "https://hub.prowler.com/check/guardduty_s3_protection_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_ai_security_framework_aws",
         "aws_foundational_security_best_practices_aws",
@@ -15322,7 +15376,7 @@
       "Severity": "medium",
       "ResourceType": "AwsIamRole",
       "Description": "IAM roles granted **Bedrock** permissions are evaluated for recent service usage.\n\nRoles whose last Bedrock access exceeds the configured threshold (default **60 days**) or that have **never** accessed Bedrock are flagged, indicating stale permissions that should be reviewed.",
-      "Risk": "Stale Bedrock permissions widen the **blast radius** of a credential compromise.\n\nAn attacker who assumes a role with unused Bedrock permissions can invoke foundation models, exfiltrate data through model responses, or incur significant costs — all without triggering expected usage patterns.",
+      "Risk": "Stale Bedrock permissions widen the **blast radius** of a credential compromise.\n\nAn attacker who assumes a role with unused Bedrock permissions can invoke foundation models, exfiltrate data through model responses, or incur significant costs \u2014 all without triggering expected usage patterns.",
       "Remediation": {
         "Code": {
           "CLI": "",
@@ -15813,7 +15867,7 @@
       "Severity": "medium",
       "ResourceType": "AwsIamUser",
       "Description": "IAM users granted **Bedrock** permissions are evaluated for recent service usage.\n\nUsers whose last Bedrock access exceeds the configured threshold (default **60 days**) or that have **never** accessed Bedrock are flagged, indicating stale permissions that should be reviewed.",
-      "Risk": "Stale Bedrock permissions widen the **blast radius** of a credential compromise.\n\nAn attacker who gains access to a user with unused Bedrock permissions can invoke foundation models, exfiltrate data through model responses, or incur significant costs — all without triggering expected usage patterns.",
+      "Risk": "Stale Bedrock permissions widen the **blast radius** of a credential compromise.\n\nAn attacker who gains access to a user with unused Bedrock permissions can invoke foundation models, exfiltrate data through model responses, or incur significant costs \u2014 all without triggering expected usage patterns.",
       "Remediation": {
         "Code": {
           "CLI": "",
@@ -15858,7 +15912,7 @@
       "Severity": "medium",
       "ResourceType": "AwsIamUser",
       "Description": "IAM users granted **SageMaker** permissions are evaluated for recent service usage.\n\nUsers whose last SageMaker access exceeds the configured threshold (default **90 days**) or that have **never** accessed SageMaker are flagged, indicating stale permissions that should be reviewed.",
-      "Risk": "Stale SageMaker permissions widen the **blast radius** of a credential compromise.\n\nAn attacker who gains access to a user with unused SageMaker permissions can access ML training data, models, endpoints, and notebooks — all without triggering expected usage patterns. Removing or scoping down stale permissions enforces least privilege and limits blast radius.",
+      "Risk": "Stale SageMaker permissions widen the **blast radius** of a credential compromise.\n\nAn attacker who gains access to a user with unused SageMaker permissions can access ML training data, models, endpoints, and notebooks \u2014 all without triggering expected usage patterns. Removing or scoping down stale permissions enforces least privilege and limits blast radius.",
       "Remediation": {
         "Code": {
           "CLI": "",
@@ -16315,7 +16369,9 @@
           "Url": "https://hub.prowler.com/check/inspector2_active_findings_exist"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "asd_essential_eight_aws",
         "aws_account_security_onboarding_aws",
@@ -16352,7 +16408,9 @@
           "Url": "https://hub.prowler.com/check/inspector2_is_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "asd_essential_eight_aws",
         "aws_account_security_onboarding_aws",
@@ -16867,7 +16925,7 @@
         "Code": {
           "CLI": "aws kms put-key-policy --key-id <key-id> --policy-name default --policy file://enclave-policy.json",
           "NativeIaC": "",
-          "Other": "1. Enumerate every Allow statement in the key policy; identify those granting sensitive actions (`kms:Decrypt`, `kms:GenerateDataKey`, etc.) without `kms:RecipientAttestation:*` conditions.\n2. Either add attestation conditions to those Allow statements, or add a Deny statement that fires when attestation is absent, e.g.: `{\"Effect\": \"Deny\", \"Principal\": \"*\", \"Action\": [\"kms:Decrypt\", ...], \"Resource\": \"*\", \"Condition\": {\"Null\": {\"kms:RecipientAttestation:PCR0\": \"true\"}}}`.\n3. Reject the common `AdminNoDataActions` shape when its action list contains `kms:*` — split administrative actions from data-plane actions so the root delegation cannot reach `kms:Decrypt`.",
+          "Other": "1. Enumerate every Allow statement in the key policy; identify those granting sensitive actions (`kms:Decrypt`, `kms:GenerateDataKey`, etc.) without `kms:RecipientAttestation:*` conditions.\n2. Either add attestation conditions to those Allow statements, or add a Deny statement that fires when attestation is absent, e.g.: `{\"Effect\": \"Deny\", \"Principal\": \"*\", \"Action\": [\"kms:Decrypt\", ...], \"Resource\": \"*\", \"Condition\": {\"Null\": {\"kms:RecipientAttestation:PCR0\": \"true\"}}}`.\n3. Reject the common `AdminNoDataActions` shape when its action list contains `kms:*` \u2014 split administrative actions from data-plane actions so the root delegation cannot reach `kms:Decrypt`.",
           "Terraform": ""
         },
         "Recommendation": {
@@ -17545,7 +17603,7 @@
           "CLI": "aws neptune modify-db-cluster --db-cluster-identifier <DB_CLUSTER_ID> --backup-retention-period 7 --apply-immediately",
           "NativeIaC": "```yaml\nParameters:\n  DBClusterId:\n    Type: String\nResources:\n  NeptuneCluster:\n    Type: AWS::Neptune::DBCluster\n    Properties:\n      DBClusterIdentifier: !Ref DBClusterId\n      BackupRetentionPeriod: 7  # Enable automated backups with 7-day retention minimum\n```",
           "Terraform": "```hcl\nresource \"aws_neptune_cluster\" \"example_resource\" {\n  cluster_identifier      = var.cluster_id\n  backup_retention_period = 7  # Enable automated backups with 7-day retention minimum\n}\n```",
-          "Other": "1. Sign in to the AWS Management Console\n2. Services → Amazon Neptune → Databases\n3. Select the DB cluster and click Modify\n4. In Backup retention period set the value to 7 (or higher)\n5. Choose Apply immediately and click Modify cluster"
+          "Other": "1. Sign in to the AWS Management Console\n2. Services \u2192 Amazon Neptune \u2192 Databases\n3. Select the DB cluster and click Modify\n4. In Backup retention period set the value to 7 (or higher)\n5. Choose Apply immediately and click Modify cluster"
         },
         "Recommendation": {
           "Text": "Ensure automated backups are enabled and retention aligns with your **RPO/RTO** and regulatory requirements (at least `7` days).\n\n- Define backup lifecycle and storage retention policies\n- Regularly test restore procedures and monitor backup health\n- Incorporate backups into Disaster Recovery and retention governance",
@@ -17589,7 +17647,9 @@
           "Url": "https://hub.prowler.com/check/neptune_cluster_copy_tags_to_snapshots"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "asd_essential_eight_aws",
         "aws_foundational_security_best_practices_aws",
@@ -18725,7 +18785,9 @@
           "Url": "https://hub.prowler.com/check/organizations_tags_policies_enabled_and_attached"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_ai_security_framework_aws",
         "c5_aws",
@@ -18791,7 +18853,9 @@
           "Url": "https://hub.prowler.com/check/rds_cluster_copy_tags_to_snapshots"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "asd_essential_eight_aws",
         "aws_foundational_security_best_practices_aws",
@@ -19059,7 +19123,9 @@
           "Url": "https://hub.prowler.com/check/rds_cluster_non_default_port"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "kisa_isms_p_2023_aws",
         "kisa_isms_p_2023_korean_aws"
@@ -19245,7 +19311,9 @@
           "Url": "https://hub.prowler.com/check/rds_instance_copy_tags_to_snapshots"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "asd_essential_eight_aws",
         "aws_foundational_security_best_practices_aws",
@@ -19814,7 +19882,9 @@
           "Url": "https://hub.prowler.com/check/rds_instance_non_default_port"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_foundational_security_best_practices_aws",
         "kisa_isms_p_2023_aws",
@@ -20527,7 +20597,7 @@
       "Severity": "high",
       "ResourceType": "AwsRoute53HostedZone",
       "Description": "**Route 53 records** are evaluated for two **subdomain takeover** vectors: (1) non-alias **`A` records** using literal IPs in **public AWS ranges** that are not assigned to resources in the account (released EIPs/ENI public IPs); and (2) non-alias **`CNAME` records** targeting an **S3 website endpoint** (`*.s3-website[.-]<region>.amazonaws.com`) whose bucket no longer exists in the account.",
-      "Risk": "**Dangling DNS records** pointing to released AWS resources enable **subdomain takeover**. An attacker who later claims the IP — or registers an S3 bucket with the same name in any AWS account — can:\n- Redirect or alter content (integrity)\n- Capture credentials/cookies (confidentiality)\n- Disrupt or impersonate services (availability)",
+      "Risk": "**Dangling DNS records** pointing to released AWS resources enable **subdomain takeover**. An attacker who later claims the IP \u2014 or registers an S3 bucket with the same name in any AWS account \u2014 can:\n- Redirect or alter content (integrity)\n- Capture credentials/cookies (confidentiality)\n- Disrupt or impersonate services (availability)",
       "Remediation": {
         "Code": {
           "CLI": "aws route53 change-resource-record-sets --hosted-zone-id <example_resource_id> --change-batch '{\"Changes\":[{\"Action\":\"UPSERT\",\"ResourceRecordSet\":{\"Name\":\"<example_resource_name>\",\"Type\":\"A\",\"AliasTarget\":{\"HostedZoneId\":\"<ALIAS_TARGET_HOSTED_ZONE_ID>\",\"DNSName\":\"<ALIAS_TARGET_DNS_NAME>\",\"EvaluateTargetHealth\":false}}}]}'",
@@ -21049,7 +21119,9 @@
           "Url": "https://hub.prowler.com/check/s3_bucket_lifecycle_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_foundational_security_best_practices_aws",
         "c5_aws",
@@ -21761,7 +21833,7 @@
       "SubServiceName": "",
       "Severity": "low",
       "ResourceType": "Other",
-      "Description": "**SageMaker Model Registry** is evaluated to verify that at least one Model Package Group exists and contains at least one model package with **ModelApprovalStatus = Approved**. This confirms that the ML governance workflow (register → review → approve → deploy) is actively in use.",
+      "Description": "**SageMaker Model Registry** is evaluated to verify that at least one Model Package Group exists and contains at least one model package with **ModelApprovalStatus = Approved**. This confirms that the ML governance workflow (register \u2192 review \u2192 approve \u2192 deploy) is actively in use.",
       "Risk": "An empty Model Registry, or one with no approved packages, indicates that models are being deployed outside any review process. This breaks provenance and accountability for production ML workloads, making it impossible to enforce governance controls such as auditing, versioning, and approval workflows.",
       "Remediation": {
         "Code": {
@@ -22212,7 +22284,7 @@
       "Severity": "high",
       "ResourceType": "AwsSecretsManagerSecret",
       "Description": "**Secrets Manager secrets** are evaluated for **restrictive resource-based policies**: explicit **Deny** for unauthorized principals, **Organization** boundary via `PrincipalOrgID`, `aws:SourceAccount` for service access. Per-principal **NotAction** restrictions are optional (defense-in-depth). Regionalized service principals are supported.",
-      "Risk": "Without a restrictive resource policy, **any IAM principal** in the account—or even **cross-account entities**—can read, modify, or delete the secret, compromising **confidentiality** and **integrity**. Overly broad policies enable **lateral movement** and **privilege escalation** through exposed credentials.",
+      "Risk": "Without a restrictive resource policy, **any IAM principal** in the account\u2014or even **cross-account entities**\u2014can read, modify, or delete the secret, compromising **confidentiality** and **integrity**. Overly broad policies enable **lateral movement** and **privilege escalation** through exposed credentials.",
       "Remediation": {
         "Code": {
           "CLI": "aws secretsmanager put-resource-policy --secret-id <example_resource_id> --resource-policy file://policy.json",
@@ -22386,7 +22458,9 @@
           "Url": "https://hub.prowler.com/check/securityhub_enabled"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "aws_account_security_onboarding_aws",
         "aws_ai_security_framework_aws",
@@ -23321,7 +23395,9 @@
           "Url": "https://hub.prowler.com/check/trustedadvisor_errors_and_warnings"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "kisa_isms_p_2023_aws",
         "kisa_isms_p_2023_korean_aws",
@@ -23842,7 +23918,9 @@
           "Url": "https://hub.prowler.com/check/waf_global_rulegroup_not_empty"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "kisa_isms_p_2023_aws",
         "kisa_isms_p_2023_korean_aws",
@@ -23905,7 +23983,9 @@
           "Url": "https://hub.prowler.com/check/waf_global_webacl_with_rules"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "ccc_aws",
         "kisa_isms_p_2023_aws",
@@ -23934,7 +24014,9 @@
           "Url": "https://hub.prowler.com/check/waf_regional_rule_with_conditions"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "kisa_isms_p_2023_aws",
         "kisa_isms_p_2023_korean_aws",
@@ -23962,7 +24044,9 @@
           "Url": "https://hub.prowler.com/check/waf_regional_rulegroup_not_empty"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "kisa_isms_p_2023_aws",
         "kisa_isms_p_2023_korean_aws",
@@ -24016,7 +24100,9 @@
           "Url": "https://hub.prowler.com/check/waf_regional_webacl_with_rules"
         }
       },
-      "Categories": [],
+      "Categories": [
+        "security"
+      ],
       "ComplianceFrameworks": [
         "ccc_aws",
         "kisa_isms_p_2023_aws",
@@ -24230,6 +24316,566 @@
         "iso27001_2022_aws",
         "kisa_isms_p_2023_aws",
         "kisa_isms_p_2023_korean_aws"
+      ]
+    },
+    "ebs_volume_unused_attached": {
+      "CheckID": "ebs_volume_unused_attached",
+      "CheckTitle": "EBS volume is attached to an active EC2 instance and not left available/unattached",
+      "ServiceName": "ec2",
+      "SubServiceName": "ebs",
+      "Severity": "medium",
+      "ResourceType": "AwsEc2Volume",
+      "Description": "**Amazon EBS volumes** in the `available` state are not attached to any EC2 instance and incur ongoing monthly storage costs without serving active workloads.",
+      "Risk": "Unattached EBS volumes accumulate unnecessary cloud storage expenditure and may retain unmonitored sensitive data from decommissioned instances.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws ec2 create-snapshot --volume-id <VOLUME_ID> && aws ec2 delete-volume --volume-id <VOLUME_ID>",
+          "NativeIaC": "Resources:\n  CleanupPolicy:\n    Type: AWS::DLM::LifecyclePolicy",
+          "Other": "1. Open Amazon EC2 console > Elastic Block Store > Volumes.\n2. Filter by State = available.\n3. Create a final snapshot if needed, then delete the unattached volume.",
+          "Terraform": "# Remove unattached aws_ebs_volume resources from Terraform state or attach via aws_volume_attachment\nresource \"aws_volume_attachment\" \"attached\" {\n  device_name = \"/dev/sdh\"\n  volume_id   = aws_ebs_volume.example.id\n  instance_id = aws_instance.example.id\n}"
+        },
+        "Recommendation": {
+          "Text": "Create a final EBS snapshot if data retention is required and delete unattached EBS volumes, or enable DeleteOnTermination on root/data volumes.",
+          "Url": "https://docs.aws.amazon.com/ebs/latest/userguide/ebs-deleting-volume.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "ebs_snapshot_old_orphaned": {
+      "CheckID": "ebs_snapshot_old_orphaned",
+      "CheckTitle": "EBS snapshot is not orphaned or retained beyond retention policy",
+      "ServiceName": "ec2",
+      "SubServiceName": "ebs",
+      "Severity": "low",
+      "ResourceType": "AwsEc2Snapshot",
+      "Description": "**Amazon EBS snapshots** older than the retention window whose source EBS volume no longer exists incur recurring snapshot storage charges.",
+      "Risk": "Stale and orphaned EBS snapshots drive up storage costs and expand the attack surface for sensitive historical backups.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws ec2 delete-snapshot --snapshot-id <SNAPSHOT_ID>",
+          "NativeIaC": "Resources:\n  SnapshotLifecycle:\n    Type: AWS::DLM::LifecyclePolicy",
+          "Other": "1. Open Amazon EC2 console > Snapshots.\n2. Identify snapshots older than 90 days with deleted source volumes.\n3. Deregister any associated AMIs and delete the snapshots.",
+          "Terraform": "resource \"aws_dlm_lifecycle_policy\" \"example\" {\n  description        = \"DLM lifecycle policy for EBS snapshots\"\n  execution_role_arn = aws_iam_role.dlm_lifecycle_role.arn\n  state              = \"ENABLED\"\n}"
+        },
+        "Recommendation": {
+          "Text": "Use Amazon Data Lifecycle Manager (DLM) or AWS Backup lifecycle rules to automatically expire and delete aged EBS snapshots.",
+          "Url": "https://docs.aws.amazon.com/ebs/latest/userguide/ebs-deleting-snapshot.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "ec2_instance_idle": {
+      "CheckID": "ec2_instance_idle",
+      "CheckTitle": "EC2 instance is actively utilized and right-sized for its workload",
+      "ServiceName": "ec2",
+      "SubServiceName": "",
+      "Severity": "medium",
+      "ResourceType": "AwsEc2Instance",
+      "Description": "**Amazon EC2 instances** with very low CPU and network utilization over 30 days or left in a stopped state for extended periods represent idle compute capacity or orphaned EBS attachments.",
+      "Risk": "Idle or over-provisioned EC2 instances waste significant compute and storage budget and increase patch and vulnerability management overhead.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws ec2 stop-instances --instance-ids <INSTANCE_ID> && aws ec2 modify-instance-attribute --instance-id <INSTANCE_ID> --instance-type \"{\\\"Value\\\": \\\"t3.small\\\"}\"",
+          "NativeIaC": "Resources:\n  RightSizedInstance:\n    Type: AWS::EC2::Instance\n    Properties:\n      InstanceType: t3.small",
+          "Other": "1. Review AWS Compute Optimizer recommendations.\n2. Terminate zombie EC2 instances or downsize over-provisioned instance types.",
+          "Terraform": "resource \"aws_instance\" \"app\" {\n  ami           = var.ami_id\n  instance_type = \"t3.small\" # Right-sized instance type\n}"
+        },
+        "Recommendation": {
+          "Text": "Terminate unused EC2 instances, stop non-production instances outside business hours, or right-size over-provisioned instance types.",
+          "Url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-resize.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "natgateway_idle": {
+      "CheckID": "natgateway_idle",
+      "CheckTitle": "VPC NAT Gateway actively processes network traffic",
+      "ServiceName": "vpc",
+      "SubServiceName": "natgateway",
+      "Severity": "medium",
+      "ResourceType": "AwsEc2NatGateway",
+      "Description": "**AWS NAT Gateways** that transfer 0 bytes out to the internet over 30 days incur fixed hourly charges without carrying traffic.",
+      "Risk": "Unused NAT Gateways generate continuous hourly charges (~$32.85/month each) with zero operational benefit.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws ec2 delete-nat-gateway --nat-gateway-id <NAT_GATEWAY_ID>",
+          "NativeIaC": "# Remove unused AWS::EC2::NatGateway resource from CloudFormation template",
+          "Other": "1. Open Amazon VPC console > NAT Gateways.\n2. Verify no private subnet route tables depend on the idle NAT Gateway.\n3. Delete the NAT Gateway and release its Elastic IP.",
+          "Terraform": "# Remove unused aws_nat_gateway resource from Terraform configuration"
+        },
+        "Recommendation": {
+          "Text": "Delete idle NAT Gateways that have processed 0 bytes over the last 30 days and release their associated Elastic IPs.",
+          "Url": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "rds_instance_idle": {
+      "CheckID": "rds_instance_idle",
+      "CheckTitle": "RDS DB instance has active connections and appropriate CPU utilization",
+      "ServiceName": "rds",
+      "SubServiceName": "",
+      "Severity": "medium",
+      "ResourceType": "AwsRdsDbInstance",
+      "Description": "**Amazon RDS DB instances** with 0 database connections or sustained maximum CPU utilization below 15% over 30 days are idle or over-provisioned.",
+      "Risk": "Zombie or oversized RDS instances incur substantial compute, storage, and licensing costs and expand the database attack surface.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws rds delete-db-instance --db-instance-identifier <DB_INSTANCE_ID> --final-db-snapshot-identifier <FINAL_SNAPSHOT_ID>",
+          "NativeIaC": "Resources:\n  Database:\n    Type: AWS::RDS::DBInstance\n    Properties:\n      DBInstanceClass: db.t3.medium",
+          "Other": "1. Open Amazon RDS console > Databases.\n2. For 0-connection databases, take a final snapshot and delete the instance.\n3. For low-CPU databases, modify the DB instance class to a smaller tier.",
+          "Terraform": "resource \"aws_db_instance\" \"default\" {\n  instance_class = \"db.t3.medium\" # Right-sized DB instance class\n}"
+        },
+        "Recommendation": {
+          "Text": "Take a final snapshot and delete unused RDS instances with 0 connections, or downscale over-provisioned DB instance classes.",
+          "Url": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_DeleteInstance.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "elb_load_balancer_idle": {
+      "CheckID": "elb_load_balancer_idle",
+      "CheckTitle": "Elastic Load Balancer has active traffic or registered target groups",
+      "ServiceName": "elbv2",
+      "SubServiceName": "",
+      "Severity": "medium",
+      "ResourceType": "AwsElbv2LoadBalancer",
+      "Description": "**Application, Network, and Gateway Load Balancers** with 0 requests/flows over 30 days incur fixed hourly charges.",
+      "Risk": "Idle load balancers waste monthly infrastructure budget and may expose stale public endpoints.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws elbv2 delete-load-balancer --load-balancer-arn <LOAD_BALANCER_ARN>",
+          "NativeIaC": "# Remove unused AWS::ElasticLoadBalancingV2::LoadBalancer resource",
+          "Other": "1. Open Amazon EC2 console > Load Balancers.\n2. Verify DNS records no longer point to the idle load balancer.\n3. Delete the load balancer.",
+          "Terraform": "# Remove unused aws_lb resource or consolidate ingress via ALB host/path routing rules"
+        },
+        "Recommendation": {
+          "Text": "Delete unused load balancers with zero traffic over 30 days or consolidate multiple ALBs using host/path-based routing.",
+          "Url": "https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancers.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "lambda_function_unused": {
+      "CheckID": "lambda_function_unused",
+      "CheckTitle": "Lambda function is actively invoked within the 30-day evaluation window",
+      "ServiceName": "awslambda",
+      "SubServiceName": "",
+      "Severity": "low",
+      "ResourceType": "AwsLambdaFunction",
+      "Description": "**AWS Lambda functions** with 0 invocations over 30 days consume code storage quota and may retain active IAM execution roles and VPC attachments.",
+      "Risk": "Abandoned Lambda functions clutter code storage, often run outdated runtimes, and retain IAM permissions that increase blast radius.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws lambda delete-function --function-name <FUNCTION_NAME>",
+          "NativeIaC": "# Remove unused AWS::Lambda::Function resource from CloudFormation template",
+          "Other": "1. Open AWS Lambda console > Functions.\n2. Verify the function has 0 invocations over 30 days and no scheduled triggers.\n3. Delete the unused function and its IAM execution role.",
+          "Terraform": "# Remove unused aws_lambda_function resource from Terraform configuration"
+        },
+        "Recommendation": {
+          "Text": "Delete unused Lambda functions and remove their associated IAM execution roles to reduce code storage and security footprint.",
+          "Url": "https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-awscli.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "eni_detached_unused": {
+      "CheckID": "eni_detached_unused",
+      "CheckTitle": "Elastic Network Interface is attached to an instance or AWS service",
+      "ServiceName": "ec2",
+      "SubServiceName": "eni",
+      "Severity": "low",
+      "ResourceType": "AwsEc2NetworkInterface",
+      "Description": "**Elastic Network Interfaces (ENIs)** in the `available` (detached) state consume subnet IP addresses and may hold billable public IPv4 addresses.",
+      "Risk": "Orphaned ENIs exhaust VPC subnet IP space, hold security group references blocking cleanup, and can incur public IPv4 charges.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws ec2 delete-network-interface --network-interface-id <ENI_ID>",
+          "NativeIaC": "# Remove orphaned AWS::EC2::NetworkInterface resource",
+          "Other": "1. Open Amazon EC2 console > Network Interfaces.\n2. Filter by Status = available.\n3. Delete detached network interfaces.",
+          "Terraform": "# Remove unused aws_network_interface resource from Terraform configuration"
+        },
+        "Recommendation": {
+          "Text": "Delete detached Elastic Network Interfaces (ENIs) to reclaim VPC subnet IPs and eliminate unattached IPv4 costs.",
+          "Url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "cloudformation_stack_failed_or_abandoned": {
+      "CheckID": "cloudformation_stack_failed_or_abandoned",
+      "CheckTitle": "CloudFormation stack is not in a failed or rollback-complete state",
+      "ServiceName": "cloudformation",
+      "SubServiceName": "",
+      "Severity": "low",
+      "ResourceType": "AwsCloudFormationStack",
+      "Description": "**AWS CloudFormation stacks** stuck in `ROLLBACK_COMPLETE`, `CREATE_FAILED`, `DELETE_FAILED`, or `UPDATE_ROLLBACK_FAILED` represent failed deployments that may leave partial billable resources behind.",
+      "Risk": "Failed or abandoned CloudFormation stacks cause infrastructure drift, consume stack quotas, and can retain orphaned billable resources.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws cloudformation delete-stack --stack-name <STACK_NAME>",
+          "NativeIaC": "# Fix template errors and redeploy or delete the failed CloudFormation stack",
+          "Other": "1. Open AWS CloudFormation console > Stacks.\n2. Inspect failed stacks and delete stacks in ROLLBACK_COMPLETE or DELETE_FAILED state.",
+          "Terraform": "# Manage stack lifecycle or migrate orphaned resources into clean IaC state"
+        },
+        "Recommendation": {
+          "Text": "Delete CloudFormation stacks stuck in ROLLBACK_COMPLETE or failed states and clean up any retained resources.",
+          "Url": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-delete-stack.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "dynamodb_provisioned_capacity_unused": {
+      "CheckID": "dynamodb_provisioned_capacity_unused",
+      "CheckTitle": "DynamoDB table with provisioned capacity is actively storing items or uses On-Demand billing",
+      "ServiceName": "dynamodb",
+      "SubServiceName": "",
+      "Severity": "medium",
+      "ResourceType": "AwsDynamoDbTable",
+      "Description": "**Amazon DynamoDB tables** configured with `PROVISIONED` read/write capacity units (RCU/WCU) but containing 0 items incur continuous hourly capacity charges.",
+      "Risk": "Empty DynamoDB tables with provisioned throughput waste monthly database budget for unused RCU and WCU reservations.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws dynamodb update-table --table-name <TABLE_NAME> --billing-mode PAY_PER_REQUEST",
+          "NativeIaC": "Resources:\n  Table:\n    Type: AWS::DynamoDB::Table\n    Properties:\n      BillingMode: PAY_PER_REQUEST",
+          "Other": "1. Open Amazon DynamoDB console > Tables.\n2. Switch empty or sporadic tables to On-Demand (PAY_PER_REQUEST) capacity mode, or delete unused tables.",
+          "Terraform": "resource \"aws_dynamodb_table\" \"example\" {\n  name         = \"example\"\n  billing_mode = \"PAY_PER_REQUEST\"\n}"
+        },
+        "Recommendation": {
+          "Text": "Delete unused DynamoDB tables or switch billing mode from PROVISIONED to PAY_PER_REQUEST (On-Demand).",
+          "Url": "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "redshift_cluster_idle": {
+      "CheckID": "redshift_cluster_idle",
+      "CheckTitle": "Redshift cluster has active database connections",
+      "ServiceName": "redshift",
+      "SubServiceName": "",
+      "Severity": "high",
+      "ResourceType": "AwsRedshiftCluster",
+      "Description": "**Amazon Redshift clusters** with 0 database connections over 30 days incur significant multi-node data warehouse compute charges.",
+      "Risk": "Idle Redshift clusters generate high continuous hourly costs across all provisioned data warehouse nodes.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws redshift pause-cluster --cluster-identifier <CLUSTER_ID>",
+          "NativeIaC": "# Pause or delete idle AWS::Redshift::Cluster resources",
+          "Other": "1. Open Amazon Redshift console > Clusters.\n2. Pause the idle cluster or take a final snapshot and delete it.",
+          "Terraform": "# Remove or pause idle aws_redshift_cluster resources"
+        },
+        "Recommendation": {
+          "Text": "Pause or take a final snapshot and delete idle Amazon Redshift clusters with 0 connections over 30 days, or migrate to Redshift Serverless.",
+          "Url": "https://docs.aws.amazon.com/redshift/latest/mgmt/managing-cluster-operations.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "cloudfront_distribution_unused": {
+      "CheckID": "cloudfront_distribution_unused",
+      "CheckTitle": "CloudFront distribution serves active traffic",
+      "ServiceName": "cloudfront",
+      "SubServiceName": "",
+      "Severity": "low",
+      "ResourceType": "AwsCloudFrontDistribution",
+      "Description": "**Amazon CloudFront distributions** with 0 requests over 30 days represent abandoned CDN endpoints that may point to stale origins.",
+      "Risk": "Unused CloudFront distributions increase management overhead and risk subdomain takeover if origin S3 buckets or DNS targets are decommissioned.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws cloudfront delete-distribution --id <DISTRIBUTION_ID> --if-match <ETAG>",
+          "NativeIaC": "# Remove unused AWS::CloudFront::Distribution resource",
+          "Other": "1. Open Amazon CloudFront console.\n2. Disable the unused distribution, wait for deployment, and delete it.",
+          "Terraform": "# Remove unused aws_cloudfront_distribution resource from Terraform configuration"
+        },
+        "Recommendation": {
+          "Text": "Disable and delete unused CloudFront distributions with 0 requests over 30 days and remove associated DNS records.",
+          "Url": "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/HowToDeleteDistribution.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "s3_bucket_lifecycle_missing": {
+      "CheckID": "s3_bucket_lifecycle_missing",
+      "CheckTitle": "S3 bucket has a lifecycle configuration to transition or expire objects",
+      "ServiceName": "s3",
+      "SubServiceName": "",
+      "Severity": "low",
+      "ResourceType": "AwsS3Bucket",
+      "Description": "**Amazon S3 buckets** without a lifecycle configuration retain objects in `STANDARD` storage indefinitely and never abort incomplete multipart uploads.",
+      "Risk": "Missing S3 lifecycle rules lead to unbounded storage growth, orphaned incomplete multipart uploads, and higher storage tier costs.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws s3api put-bucket-lifecycle-configuration --bucket <BUCKET_NAME> --lifecycle-configuration file://lifecycle.json",
+          "NativeIaC": "Resources:\n  Bucket:\n    Type: AWS::S3::Bucket\n    Properties:\n      LifecycleConfiguration:\n        Rules:\n          - Id: AbortIncompleteMultipartUpload\n            Status: Enabled\n            AbortIncompleteMultipartUpload:\n              DaysAfterInitiation: 7",
+          "Other": "1. Open Amazon S3 console > Buckets > Management tab.\n2. Create a lifecycle rule to transition aged objects to S3 Intelligent-Tiering/Glacier and abort incomplete multipart uploads.",
+          "Terraform": "resource \"aws_s3_bucket_lifecycle_configuration\" \"example\" {\n  bucket = aws_s3_bucket.example.id\n  rule {\n    id     = \"cleanup-multipart\"\n    status = \"Enabled\"\n    abort_incomplete_multipart_upload {\n      days_after_initiation = 7\n    }\n  }\n}"
+        },
+        "Recommendation": {
+          "Text": "Configure S3 Lifecycle rules to transition cold objects to lower-cost tiers and abort incomplete multipart uploads after 7 days.",
+          "Url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "cost_explorer_spend_tracked": {
+      "CheckID": "cost_explorer_spend_tracked",
+      "CheckTitle": "AWS Cost Explorer service spend is tracked and monitored",
+      "ServiceName": "account",
+      "SubServiceName": "cost-explorer",
+      "Severity": "info",
+      "ResourceType": "AwsAccount",
+      "Description": "**AWS Cost Explorer** aggregates service-level unblended costs over the evaluation period to provide visibility into top cloud spend drivers.",
+      "Risk": "Lack of continuous service spend visibility delays detection of cost anomalies and runaway resource consumption.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws ce get-cost-and-usage --time-period Start=<START_DATE>,End=<END_DATE> --granularity MONTHLY --metrics UnblendedCost --group-by Type=DIMENSION,Key=SERVICE",
+          "NativeIaC": "Resources:\n  CostAnomalyMonitor:\n    Type: AWS::CE::AnomalyMonitor\n    Properties:\n      MonitorName: ServiceMonitor\n      MonitorType: DIMENSIONAL\n      MonitorDimension: SERVICE",
+          "Other": "1. Open AWS Cost Management console > Cost Explorer.\n2. Configure AWS Budgets and Cost Anomaly Detection alerts.",
+          "Terraform": "resource \"aws_ce_anomaly_monitor\" \"service_monitor\" {\n  name              = \"AWSServiceMonitor\"\n  monitor_type      = \"DIMENSIONAL\"\n  monitor_dimension = \"SERVICE\"\n}"
+        },
+        "Recommendation": {
+          "Text": "Monitor service-level spend via AWS Cost Explorer and configure AWS Budgets and Cost Anomaly Detection.",
+          "Url": "https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "ecr_image_untagged_or_stale": {
+      "CheckID": "ecr_image_untagged_or_stale",
+      "CheckTitle": "ECR repository does not retain untagged or stale container images without a lifecycle policy",
+      "ServiceName": "ecr",
+      "SubServiceName": "",
+      "Severity": "low",
+      "ResourceType": "AwsEcrRepository",
+      "Description": "**Amazon ECR repositories** without a lifecycle policy that accumulate untagged or stale container images incur ongoing ECR storage costs.",
+      "Risk": "Retaining untagged and obsolete container images inflates ECR storage bills and keeps vulnerable old image layers available for deployment.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws ecr put-lifecycle-policy --repository-name <REPO_NAME> --lifecycle-policy-text file://policy.json",
+          "NativeIaC": "Resources:\n  Repo:\n    Type: AWS::ECR::Repository\n    Properties:\n      LifecyclePolicy:\n        LifecyclePolicyText: |\n          {\"rules\":[{\"rulePriority\":1,\"selection\":{\"tagStatus\":\"untagged\",\"countType\":\"sinceImagePushed\",\"countUnit\":\"days\",\"countNumber\":14},\"action\":{\"type\":\"expire\"}}]}",
+          "Other": "1. Open Amazon ECR console > Repositories.\n2. Configure a Lifecycle Policy to expire untagged images after 14 days and stale images beyond retention.",
+          "Terraform": "resource \"aws_ecr_lifecycle_policy\" \"cleanup\" {\n  repository = aws_ecr_repository.example.name\n  policy     = jsonencode({\n    rules = [{\n      rulePriority = 1\n      description  = \"Expire untagged images\"\n      selection    = { tagStatus = \"untagged\", countType = \"sinceImagePushed\", countUnit = \"days\", countNumber = 14 }\n      action       = { type = \"expire\" }\n    }]\n  })\n}"
+        },
+        "Recommendation": {
+          "Text": "Configure an ECR Lifecycle Policy to automatically expire untagged and stale container images.",
+          "Url": "https://docs.aws.amazon.com/AmazonECR/latest/userguide/LifecyclePolicies.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "ecs_service_idle": {
+      "CheckID": "ecs_service_idle",
+      "CheckTitle": "ECS service tasks are actively utilized and right-sized",
+      "ServiceName": "ecs",
+      "SubServiceName": "",
+      "Severity": "medium",
+      "ResourceType": "AwsEcsService",
+      "Description": "**Amazon ECS services** running tasks with sustained maximum CPU and memory utilization below 5% over 30 days represent idle or over-provisioned container capacity.",
+      "Risk": "Idle or oversized ECS Fargate/EC2 services waste container compute and memory reservations continuously.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws ecs update-service --cluster <CLUSTER_NAME> --service <SERVICE_NAME> --desired-count 0",
+          "NativeIaC": "Resources:\n  TaskDef:\n    Type: AWS::ECS::TaskDefinition\n    Properties:\n      Cpu: \"256\"\n      Memory: \"512\"",
+          "Other": "1. Open Amazon ECS console > Clusters > Services.\n2. Scale down idle services to desiredCount = 0 or reduce task CPU/memory reservations.",
+          "Terraform": "resource \"aws_ecs_task_definition\" \"app\" {\n  family = \"app\"\n  cpu    = 256\n  memory = 512\n}"
+        },
+        "Recommendation": {
+          "Text": "Scale down unused ECS services or right-size task CPU and memory reservations using Application Auto Scaling.",
+          "Url": "https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-auto-scaling.html"
+        }
+      },
+      "Categories": [
+        "finops",
+        "cost-optimization"
+      ],
+      "ComplianceFrameworks": [
+        "aws_well_architected_framework_cost_optimization_pillar_aws"
+      ]
+    },
+    "iam_role_unused": {
+      "CheckID": "iam_role_unused",
+      "CheckTitle": "IAM role has been used within the last 90 days",
+      "ServiceName": "iam",
+      "SubServiceName": "",
+      "Severity": "low",
+      "ResourceType": "AwsIamRole",
+      "Description": "**AWS IAM roles** that have not been assumed for more than 90 days (or were created over 90 days ago and never used) represent dormant privileges.",
+      "Risk": "Dormant IAM roles expand the identity attack surface and can be abused for lateral movement or privilege escalation if compromised.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws iam delete-role --role-name <ROLE_NAME>",
+          "NativeIaC": "# Remove unused AWS::IAM::Role resource from CloudFormation template",
+          "Other": "1. Open AWS IAM console > Roles.\n2. Sort by Last activity and verify roles unused for 90+ days.\n3. Detach policies and delete unused IAM roles.",
+          "Terraform": "# Remove unused aws_iam_role resource from Terraform configuration"
+        },
+        "Recommendation": {
+          "Text": "Review and delete IAM roles that have not been assumed in the last 90 days to maintain least privilege.",
+          "Url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_manage_delete.html"
+        }
+      },
+      "Categories": [
+        "identity-access",
+        "least-privilege"
+      ],
+      "ComplianceFrameworks": [
+        "cis_3.0_aws",
+        "aws_foundational_security_best_practices_aws",
+        "iso27001_2022_aws",
+        "soc2_aws"
+      ]
+    },
+    "awslambda_function_execution_role_least_privilege": {
+      "CheckID": "awslambda_function_execution_role_least_privilege",
+      "CheckTitle": "Lambda function execution role adheres to least privilege without administrative permissions",
+      "ServiceName": "awslambda",
+      "SubServiceName": "",
+      "Severity": "high",
+      "ResourceType": "AwsLambdaFunction",
+      "Description": "**AWS Lambda execution roles** should not have `AdministratorAccess` or inline policies granting wildcard `Resource: \"*\"` permissions.",
+      "Risk": "Overly permissive Lambda execution roles allow an attacker who compromises function code or dependencies to take over the AWS account.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws iam detach-role-policy --role-name <ROLE_NAME> --policy-arn arn:aws:iam::aws:policy/AdministratorAccess",
+          "NativeIaC": "Resources:\n  LambdaRole:\n    Type: AWS::IAM::Role\n    Properties:\n      ManagedPolicyArns:\n        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+          "Other": "1. Open AWS Lambda console > Function > Configuration > Permissions.\n2. Replace AdministratorAccess or wildcard inline policies with scoped least-privilege permissions.",
+          "Terraform": "resource \"aws_iam_role_policy\" \"scoped\" {\n  name = \"scoped-lambda-policy\"\n  role = aws_iam_role.lambda_exec.id\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\n      Effect   = \"Allow\"\n      Action   = [\"logs:CreateLogGroup\", \"logs:CreateLogStream\", \"logs:PutLogEvents\"]\n      Resource = \"arn:aws:logs:*:*:*\"\n    }]\n  })\n}"
+        },
+        "Recommendation": {
+          "Text": "Scope Lambda execution role IAM policies to the minimum required actions and specific resource ARNs.",
+          "Url": "https://docs.aws.amazon.com/lambda/latest/dg/lambda-intro-execution-role.html"
+        }
+      },
+      "Categories": [
+        "identity-access",
+        "least-privilege"
+      ],
+      "ComplianceFrameworks": [
+        "aws_foundational_security_best_practices_aws",
+        "cis_3.0_aws",
+        "iso27001_2022_aws",
+        "pci_4.0_aws",
+        "soc2_aws"
+      ]
+    },
+    "awslambda_function_tracing_enabled": {
+      "CheckID": "awslambda_function_tracing_enabled",
+      "CheckTitle": "Lambda function has AWS X-Ray active tracing enabled",
+      "ServiceName": "awslambda",
+      "SubServiceName": "",
+      "Severity": "low",
+      "ResourceType": "AwsLambdaFunction",
+      "Description": "**AWS Lambda functions** are evaluated to ensure AWS X-Ray active tracing (`TracingConfig.Mode = Active`) is enabled for distributed observability and security forensics.",
+      "Risk": "Without active tracing, diagnosing anomalous invocation flows, performance bottlenecks, or downstream service abuse across serverless architectures is hindered.",
+      "Remediation": {
+        "Code": {
+          "CLI": "aws lambda update-function-configuration --function-name <FUNCTION_NAME> --tracing-config Mode=Active",
+          "NativeIaC": "Resources:\n  Function:\n    Type: AWS::Lambda::Function\n    Properties:\n      TracingConfig:\n        Mode: Active",
+          "Other": "1. Open AWS Lambda console > Functions > select function.\n2. Go to Configuration > Monitoring and operations tools.\n3. Enable AWS X-Ray Active tracing.",
+          "Terraform": "resource \"aws_lambda_function\" \"example\" {\n  function_name = \"example\"\n  tracing_config {\n    mode = \"Active\"\n  }\n}"
+        },
+        "Recommendation": {
+          "Text": "Enable AWS X-Ray active tracing (`Mode=Active`) on Lambda functions.",
+          "Url": "https://docs.aws.amazon.com/lambda/latest/dg/services-xray.html"
+        }
+      },
+      "Categories": [
+        "logging",
+        "observability"
+      ],
+      "ComplianceFrameworks": [
+        "aws_foundational_security_best_practices_aws",
+        "aws_well_architected_framework_security_pillar_aws",
+        "soc2_aws"
       ]
     }
   }

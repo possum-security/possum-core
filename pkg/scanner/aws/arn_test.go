@@ -92,3 +92,52 @@ func TestARN_StandardizeResultARN(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "my-prod-assets", metrics["DisplayName"])
 }
+
+func TestARN_NormalizeRegion(t *testing.T) {
+	assert.Equal(t, "global", NormalizeRegion("global", "us-east-1"))
+	assert.Equal(t, "global", NormalizeRegion("GLOBAL", "us-east-1"))
+	assert.Equal(t, "us-west-2", NormalizeRegion("", "us-west-2"))
+	assert.Equal(t, "us-west-2", NormalizeRegion("regional", "us-west-2"))
+	assert.Equal(t, "us-east-1", NormalizeRegion("us-east-1a", "us-west-2"))
+	assert.Equal(t, "eu-central-1", NormalizeRegion("eu-central-1b", "us-east-1"))
+	assert.Equal(t, "us-gov-west-1", NormalizeRegion("us-gov-west-1a", "us-east-1"))
+}
+
+func TestARN_StandardizeResultARN_PreservesAndNormalizesAccountAndRegion(t *testing.T) {
+	// 1. Regional resource with AZ in Region and empty AccountID
+	ebsRes := model.ScanResult{
+		ResourceID:   "vol-0abc123def456",
+		ResourceType: "AWS::EC2::Volume",
+		Region:       "us-east-1a",
+		RuleID:       "ec2_ebs_volume_encryption",
+	}
+	StandardizeResultARN(&ebsRes, "222233334444", "us-east-1")
+	assert.Equal(t, "222233334444", ebsRes.AccountID)
+	assert.Equal(t, "us-east-1", ebsRes.Region)
+	assert.Equal(t, "arn:aws:ec2:us-east-1:222233334444:volume/vol-0abc123def456", ebsRes.ResourceID)
+
+	// 2. Global resource with "regional" placeholder
+	iamRes := model.ScanResult{
+		ResourceID:   "AdminRole",
+		ResourceType: "AWS::IAM::Role",
+		Region:       "regional",
+		AccountID:    "333344445555",
+		RuleID:       "iam_admin_policy",
+	}
+	StandardizeResultARN(&iamRes, "111122223333", "us-west-2")
+	assert.Equal(t, "333344445555", iamRes.AccountID)
+	assert.Equal(t, "global", iamRes.Region)
+	assert.Equal(t, "arn:aws:iam::333344445555:role/AdminRole", iamRes.ResourceID)
+
+	// 3. Existing ARN extracts AccountID and Region when missing/placeholder
+	rdsRes := model.ScanResult{
+		ResourceID:   "arn:aws:rds:eu-west-1:777788889999:db:prod-mysql",
+		ResourceType: "AWS::RDS::DBInstance",
+		Region:       "regional",
+		RuleID:       "rds_instance_public_access",
+	}
+	StandardizeResultARN(&rdsRes, "", "us-east-1")
+	assert.Equal(t, "777788889999", rdsRes.AccountID)
+	assert.Equal(t, "eu-west-1", rdsRes.Region)
+	assert.Equal(t, "arn:aws:rds:eu-west-1:777788889999:db:prod-mysql", rdsRes.ResourceID)
+}

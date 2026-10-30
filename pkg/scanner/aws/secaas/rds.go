@@ -47,10 +47,7 @@ func (s *RDSScanner) Name() string {
 }
 
 func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
-	limit := 0
-	if val, ok := ctx.Value("ResourceLimit").(int); ok {
-		limit = val
-	}
+	limit := scanner.GetResourceLimit(ctx)
 	processedCount := 0
 	var results []scanner.ScanResult
 	region := s.region
@@ -65,22 +62,31 @@ func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			return cached
 		}
 
-		out, err := s.client.DescribeDBParameters(ctx, &rds.DescribeDBParametersInput{
+		encrypted := false
+		paramPaginator := rds.NewDescribeDBParametersPaginator(s.client, &rds.DescribeDBParametersInput{
 			DBParameterGroupName: aws.String(pgName),
 		})
-		if err != nil {
-			pgCache[pgName] = false
-			return false
-		}
+		for paramPaginator.HasMorePages() {
+			if scanner.ShouldStop(ctx, 0, 0) {
+				break
+			}
+			out, err := paramPaginator.NextPage(ctx)
+			if err != nil || out == nil {
+				pgCache[pgName] = false
+				return false
+			}
 
-		encrypted := false
-		for _, param := range out.Parameters {
-			pName := strings.ToLower(aws.ToString(param.ParameterName))
-			pVal := strings.ToLower(aws.ToString(param.ParameterValue))
+			for _, param := range out.Parameters {
+				pName := strings.ToLower(aws.ToString(param.ParameterName))
+				pVal := strings.ToLower(aws.ToString(param.ParameterValue))
 
-			if (pName == "rds.force_ssl" && (pVal == "1" || pVal == "true")) ||
-				(pName == "require_secure_transport" && (pVal == "1" || pVal == "on" || pVal == "true")) {
-				encrypted = true
+				if (pName == "rds.force_ssl" && (pVal == "1" || pVal == "true")) ||
+					(pName == "require_secure_transport" && (pVal == "1" || pVal == "on" || pVal == "true")) {
+					encrypted = true
+					break
+				}
+			}
+			if encrypted {
 				break
 			}
 		}
@@ -93,7 +99,7 @@ func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	paginator := rds.NewDescribeDBInstancesPaginator(s.client, &rds.DescribeDBInstancesInput{})
 
 	for paginator.HasMorePages() {
-		if limit > 0 && processedCount >= limit {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
 			break
 		}
 		page, err := paginator.NextPage(ctx)
@@ -102,7 +108,7 @@ func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		}
 
 		for _, instance := range page.DBInstances {
-			if limit > 0 && processedCount >= limit {
+			if scanner.ShouldStop(ctx, processedCount, limit) {
 				break
 			}
 			processedCount++
@@ -319,7 +325,7 @@ func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	// 6. Audit RDS DB Snapshots for Public Access (rds_snapshots_public_access - CRITICAL)
 	snapPaginator := rds.NewDescribeDBSnapshotsPaginator(s.client, &rds.DescribeDBSnapshotsInput{})
 	for snapPaginator.HasMorePages() {
-		if limit > 0 && processedCount >= limit {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
 			break
 		}
 		snapPage, err := snapPaginator.NextPage(ctx)
@@ -328,7 +334,7 @@ func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		}
 
 		for _, snap := range snapPage.DBSnapshots {
-			if limit > 0 && processedCount >= limit {
+			if scanner.ShouldStop(ctx, processedCount, limit) {
 				break
 			}
 			processedCount++

@@ -25,6 +25,7 @@ type IAMApi interface {
 	ListUserPolicies(ctx context.Context, params *iam.ListUserPoliciesInput, optFns ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error)
 	GetUserPolicy(ctx context.Context, params *iam.GetUserPolicyInput, optFns ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error)
 	ListRoles(ctx context.Context, params *iam.ListRolesInput, optFns ...func(*iam.Options)) (*iam.ListRolesOutput, error)
+	GetRole(ctx context.Context, params *iam.GetRoleInput, optFns ...func(*iam.Options)) (*iam.GetRoleOutput, error)
 	ListGroupsForUser(ctx context.Context, params *iam.ListGroupsForUserInput, optFns ...func(*iam.Options)) (*iam.ListGroupsForUserOutput, error)
 	ListAttachedGroupPolicies(ctx context.Context, params *iam.ListAttachedGroupPoliciesInput, optFns ...func(*iam.Options)) (*iam.ListAttachedGroupPoliciesOutput, error)
 	ListGroupPolicies(ctx context.Context, params *iam.ListGroupPoliciesInput, optFns ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error)
@@ -64,10 +65,7 @@ func (s *IAMScanner) Name() string {
 }
 
 func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
-	limit := 0
-	if val, ok := ctx.Value("ResourceLimit").(int); ok {
-		limit = val
-	}
+	limit := scanner.GetResourceLimit(ctx)
 	processedCount := 0
 	var results []scanner.ScanResult
 
@@ -93,12 +91,34 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			},
 			Nodes: []graph.Node{{ID: "RootAccount", NodeType: "SecaaS-IAM"}},
 		})
+	} else {
+		results = append(results, scanner.ScanResult{
+			ResourceID:   "RootAccount",
+			ResourceType: "SecaaS-IAM",
+			Region:       "global",
+			Status:       "PASS",
+			IsOrphaned:   false,
+			RuleID:       "iam_root_mfa_enabled",
+			Severity:     "INFO",
+			Metrics: map[string]interface{}{
+				"StatusExtended": "Root account has MFA enabled.",
+				"Recommendation": "Enable Multi-Factor Authentication (MFA) on the AWS root account immediately.",
+			},
+			Nodes: []graph.Node{{ID: "RootAccount", NodeType: "SecaaS-IAM"}},
+		})
 	}
 
 	// iam_root_hardware_mfa_enabled (CIS 1.6)
-	vMfaOut, err := s.client.ListVirtualMFADevices(ctx, &iam.ListVirtualMFADevicesInput{})
 	rootHasVirtualMFA := false
-	if err == nil && vMfaOut != nil {
+	var vMfaMarker *string
+	for {
+		if scanner.ShouldStop(ctx, 0, 0) {
+			break
+		}
+		vMfaOut, err := s.client.ListVirtualMFADevices(ctx, &iam.ListVirtualMFADevicesInput{Marker: vMfaMarker})
+		if err != nil || vMfaOut == nil {
+			break
+		}
 		for _, dev := range vMfaOut.VirtualMFADevices {
 			sn := strings.ToLower(aws.ToString(dev.SerialNumber))
 			if strings.Contains(sn, "root") || (dev.User != nil && strings.HasSuffix(aws.ToString(dev.User.Arn), ":root")) {
@@ -106,6 +126,10 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 				break
 			}
 		}
+		if rootHasVirtualMFA || !vMfaOut.IsTruncated || vMfaOut.Marker == nil {
+			break
+		}
+		vMfaMarker = vMfaOut.Marker
 	}
 	if val, ok := summary.SummaryMap["AccountMFAEnabled"]; ok && val > 0 && rootHasVirtualMFA {
 		results = append(results, scanner.ScanResult{
@@ -118,6 +142,20 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			Metrics: map[string]interface{}{
 				"StatusExtended": "Root account has virtual MFA enabled instead of hardware MFA.",
 				"SecurityIssues": []string{"Root account using virtual MFA instead of hardware security key"},
+				"Recommendation": "Configure a hardware MFA device (FIDO security key) for the root account.",
+			},
+			Nodes: []graph.Node{{ID: "RootAccount", NodeType: "SecaaS-IAM"}},
+		})
+	} else if val, ok := summary.SummaryMap["AccountMFAEnabled"]; ok && val > 0 {
+		results = append(results, scanner.ScanResult{
+			ResourceID:   "RootAccount",
+			ResourceType: "SecaaS-IAM",
+			Region:       "global",
+			Status:       "PASS",
+			RuleID:       "iam_root_hardware_mfa_enabled",
+			Severity:     "INFO",
+			Metrics: map[string]interface{}{
+				"StatusExtended": "Root account has hardware MFA enabled.",
 				"Recommendation": "Configure a hardware MFA device (FIDO security key) for the root account.",
 			},
 			Nodes: []graph.Node{{ID: "RootAccount", NodeType: "SecaaS-IAM"}},
@@ -168,6 +206,20 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 						},
 						Nodes: []graph.Node{{ID: "RootAccount", NodeType: "SecaaS-IAM"}},
 					})
+				} else {
+					results = append(results, scanner.ScanResult{
+						ResourceID:   "RootAccount",
+						ResourceType: "SecaaS-IAM",
+						Region:       "global",
+						Status:       "PASS",
+						RuleID:       "iam_avoid_root_usage",
+						Severity:     "INFO",
+						Metrics: map[string]interface{}{
+							"StatusExtended": "Root user has not been used within the last 24 hours.",
+							"Recommendation": "Avoid using the root user for administrative tasks; use IAM Identity Center SSO with temporary credentials.",
+						},
+						Nodes: []graph.Node{{ID: "RootAccount", NodeType: "SecaaS-IAM"}},
+					})
 				}
 				break
 			}
@@ -187,6 +239,21 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			Metrics: map[string]interface{}{
 				"StatusExtended": "Root account has active access keys.",
 				"SecurityIssues": []string{"Root account has active access keys"},
+				"Recommendation": "Delete all access keys for the root account.",
+			},
+			Nodes: []graph.Node{{ID: "RootAccount", NodeType: "SecaaS-IAM"}},
+		})
+	} else {
+		results = append(results, scanner.ScanResult{
+			ResourceID:   "RootAccount",
+			ResourceType: "SecaaS-IAM",
+			Region:       "global",
+			Status:       "PASS",
+			IsOrphaned:   false,
+			RuleID:       "iam_no_root_access_key",
+			Severity:     "INFO",
+			Metrics: map[string]interface{}{
+				"StatusExtended": "Root account does not have active access keys.",
 				"Recommendation": "Delete all access keys for the root account.",
 			},
 			Nodes: []graph.Node{{ID: "RootAccount", NodeType: "SecaaS-IAM"}},
@@ -242,6 +309,21 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 				},
 				Nodes: []graph.Node{{ID: "AccountPasswordPolicy", NodeType: "SecaaS-IAM"}},
 			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   "AccountPasswordPolicy",
+				ResourceType: "SecaaS-IAM",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "iam_password_policy_minimum_length_14",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"MinimumPasswordLength": aws.ToInt32(pol.MinimumPasswordLength),
+					"StatusExtended":        fmt.Sprintf("IAM password policy minimum length is %d (meets >= 14 requirement).", aws.ToInt32(pol.MinimumPasswordLength)),
+					"Recommendation":        "Set password policy minimum length to at least 14 characters.",
+				},
+				Nodes: []graph.Node{{ID: "AccountPasswordPolicy", NodeType: "SecaaS-IAM"}},
+			})
 		}
 		if pol.PasswordReusePrevention == nil || aws.ToInt32(pol.PasswordReusePrevention) < 24 {
 			results = append(results, scanner.ScanResult{
@@ -259,12 +341,34 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 				},
 				Nodes: []graph.Node{{ID: "AccountPasswordPolicy", NodeType: "SecaaS-IAM"}},
 			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   "AccountPasswordPolicy",
+				ResourceType: "SecaaS-IAM",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "iam_password_policy_reuse_24",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"PasswordReusePrevention": aws.ToInt32(pol.PasswordReusePrevention),
+					"StatusExtended":          fmt.Sprintf("IAM password policy reuse prevention is %d (meets >= 24 requirement).", aws.ToInt32(pol.PasswordReusePrevention)),
+					"Recommendation":          "Set password policy reuse prevention to at least 24 passwords.",
+				},
+				Nodes: []graph.Node{{ID: "AccountPasswordPolicy", NodeType: "SecaaS-IAM"}},
+			})
 		}
 	}
 
 	// Server Certificates (CIS 1.19)
-	certsOut, certErr := s.client.ListServerCertificates(ctx, &iam.ListServerCertificatesInput{})
-	if certErr == nil && certsOut != nil {
+	var certMarker *string
+	for {
+		if scanner.ShouldStop(ctx, 0, 0) {
+			break
+		}
+		certsOut, certErr := s.client.ListServerCertificates(ctx, &iam.ListServerCertificatesInput{Marker: certMarker})
+		if certErr != nil || certsOut == nil {
+			break
+		}
 		for _, cert := range certsOut.ServerCertificateMetadataList {
 			certName := aws.ToString(cert.ServerCertificateName)
 			if cert.Expiration != nil && cert.Expiration.Before(time.Now()) {
@@ -284,34 +388,69 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					},
 					Nodes: []graph.Node{{ID: certName, NodeType: "SecaaS-IAM-Certificate"}},
 				})
+			} else {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   certName,
+					ResourceType: "SecaaS-IAM-Certificate",
+					Region:       "global",
+					Status:       "PASS",
+					RuleID:       "iam_no_expired_server_certificates_stored",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"ServerCertificateName": certName,
+						"StatusExtended":        fmt.Sprintf("Server certificate %s stored in IAM is not expired.", certName),
+						"Recommendation":        "Delete expired SSL/TLS server certificates stored in IAM.",
+					},
+					Nodes: []graph.Node{{ID: certName, NodeType: "SecaaS-IAM-Certificate"}},
+				})
 			}
 		}
+		if !certsOut.IsTruncated || certsOut.Marker == nil {
+			break
+		}
+		certMarker = certsOut.Marker
 	}
 
 	// SAML Identity Providers (CIS 1.21)
 	samlOut, samlErr := s.client.ListSAMLProviders(ctx, &iam.ListSAMLProvidersInput{})
-	if samlErr == nil && samlOut != nil && len(samlOut.SAMLProviderList) == 0 {
-		results = append(results, scanner.ScanResult{
-			ResourceID:   "AccountSAMLProviders",
-			ResourceType: "SecaaS-IAM",
-			Region:       "global",
-			Status:       "FAIL",
-			RuleID:       "iam_check_saml_providers_sts",
-			Severity:     "MEDIUM",
-			Metrics: map[string]interface{}{
-				"StatusExtended": "No active SAML 2.0 identity providers configured in IAM for federated SSO.",
-				"SecurityIssues": []string{"Missing SAML 2.0 identity federation provider"},
-				"Recommendation": "Configure a SAML 2.0 identity provider (IdP) in IAM to enable centralized SSO and temporary STS credentials.",
-			},
-			Nodes: []graph.Node{{ID: "AccountSAMLProviders", NodeType: "SecaaS-IAM"}},
-		})
+	if samlErr == nil && samlOut != nil {
+		if len(samlOut.SAMLProviderList) == 0 {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   "AccountSAMLProviders",
+				ResourceType: "SecaaS-IAM",
+				Region:       "global",
+				Status:       "FAIL",
+				RuleID:       "iam_check_saml_providers_sts",
+				Severity:     "MEDIUM",
+				Metrics: map[string]interface{}{
+					"StatusExtended": "No active SAML 2.0 identity providers configured in IAM for federated SSO.",
+					"SecurityIssues": []string{"Missing SAML 2.0 identity federation provider"},
+					"Recommendation": "Configure a SAML 2.0 identity provider (IdP) in IAM to enable centralized SSO and temporary STS credentials.",
+				},
+				Nodes: []graph.Node{{ID: "AccountSAMLProviders", NodeType: "SecaaS-IAM"}},
+			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   "AccountSAMLProviders",
+				ResourceType: "SecaaS-IAM",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "iam_check_saml_providers_sts",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"StatusExtended": "Active SAML 2.0 identity provider configured in IAM for federated SSO.",
+					"Recommendation": "Configure a SAML 2.0 identity provider (IdP) in IAM to enable centralized SSO and temporary STS credentials.",
+				},
+				Nodes: []graph.Node{{ID: "AccountSAMLProviders", NodeType: "SecaaS-IAM"}},
+			})
+		}
 	}
 
 	// 2. Check individual Users
 	discoveredUserGroups := make(map[string]bool)
 	paginator := iam.NewListUsersPaginator(s.client, &iam.ListUsersInput{})
 	for paginator.HasMorePages() {
-		if limit > 0 && processedCount >= limit {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
 			break
 		}
 		page, err := paginator.NextPage(ctx)
@@ -320,26 +459,42 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		}
 
 		for _, user := range page.Users {
-			if limit > 0 && processedCount >= limit {
+			if scanner.ShouldStop(ctx, processedCount, limit) {
 				break
 			}
 			processedCount++
 
 			userName := aws.ToString(user.UserName)
 
-			// Check Access Keys
-			keysOutput, err := s.client.ListAccessKeys(ctx, &iam.ListAccessKeysInput{
-				UserName: aws.String(userName),
-			})
-			if err != nil {
-				return nil, err
+			// Check Access Keys (with pagination)
+			var allAccessKeys []types.AccessKeyMetadata
+			var keyMarker *string
+			for {
+				keysOutput, err := s.client.ListAccessKeys(ctx, &iam.ListAccessKeysInput{
+					UserName: aws.String(userName),
+					Marker:   keyMarker,
+				})
+				if err != nil {
+					return nil, err
+				}
+				if keysOutput != nil {
+					allAccessKeys = append(allAccessKeys, keysOutput.AccessKeyMetadata...)
+					if !keysOutput.IsTruncated || keysOutput.Marker == nil {
+						break
+					}
+					keyMarker = keysOutput.Marker
+				} else {
+					break
+				}
 			}
 
 			hasStaleKeys := false
+			hasInitialAccessKey := false
+			hasUnusedAccessKey := false
 			var keyIssues []string
 			activeKeysCount := 0
 
-			for _, key := range keysOutput.AccessKeyMetadata {
+			for _, key := range allAccessKeys {
 				isActive := key.Status == types.StatusTypeActive
 				if isActive {
 					activeKeysCount++
@@ -359,6 +514,7 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 							diff = -diff
 						}
 						if diff <= 2*time.Minute {
+							hasInitialAccessKey = true
 							results = append(results, scanner.ScanResult{
 								ResourceID:   userName,
 								ResourceType: "SecaaS-IAM",
@@ -385,6 +541,7 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					if keyErr == nil && keyUsed != nil && keyUsed.AccessKeyLastUsed != nil {
 						if keyUsed.AccessKeyLastUsed.LastUsedDate != nil {
 							if time.Since(*keyUsed.AccessKeyLastUsed.LastUsedDate).Hours()/24 > 45 {
+								hasUnusedAccessKey = true
 								results = append(results, scanner.ScanResult{
 									ResourceID:   userName,
 									ResourceType: "SecaaS-IAM",
@@ -404,6 +561,7 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 								})
 							}
 						} else if key.CreateDate != nil && time.Since(*key.CreateDate).Hours()/24 > 45 {
+							hasUnusedAccessKey = true
 							results = append(results, scanner.ScanResult{
 								ResourceID:   userName,
 								ResourceType: "SecaaS-IAM",
@@ -425,6 +583,40 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 				}
 			}
 
+			if !hasInitialAccessKey {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   userName,
+					ResourceType: "SecaaS-IAM",
+					Region:       "global",
+					Status:       "PASS",
+					RuleID:       "iam_user_no_setup_initial_access_key",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"UserName":       userName,
+						"StatusExtended": fmt.Sprintf("IAM user %s does not have an initial access key created at user setup.", userName),
+						"Recommendation": "Do not generate access keys during IAM user creation; provision temporary credentials when needed.",
+					},
+					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
+				})
+			}
+
+			if !hasUnusedAccessKey {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   userName,
+					ResourceType: "SecaaS-IAM",
+					Region:       "global",
+					Status:       "PASS",
+					RuleID:       "iam_user_accesskey_unused",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"UserName":       userName,
+						"StatusExtended": fmt.Sprintf("IAM user %s has no active access keys unused for > 45 days.", userName),
+						"Recommendation": "Deactivate or delete access keys unused for more than 45 days.",
+					},
+					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
+				})
+			}
+
 			// iam_user_two_active_access_key (CIS 1.13)
 			if activeKeysCount >= 2 {
 				results = append(results, scanner.ScanResult{
@@ -443,12 +635,30 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					},
 					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
 				})
+			} else {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   userName,
+					ResourceType: "SecaaS-IAM",
+					Region:       "global",
+					Status:       "PASS",
+					RuleID:       "iam_user_two_active_access_key",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"UserName":        userName,
+						"ActiveKeysCount": activeKeysCount,
+						"StatusExtended":  fmt.Sprintf("IAM user %s has %d active access keys (<= 1).", userName, activeKeysCount),
+						"Recommendation":  "Ensure no IAM user possesses more than one active access key.",
+					},
+					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
+				})
 			}
 
 			// iam_user_console_access_unused (CIS 1.12 - 45 days)
+			consoleUnused := false
 			if user.PasswordLastUsed != nil {
 				daysSinceLogin := time.Since(*user.PasswordLastUsed).Hours() / 24
 				if daysSinceLogin > 45 {
+					consoleUnused = true
 					results = append(results, scanner.ScanResult{
 						ResourceID:   userName,
 						ResourceType: "SecaaS-IAM",
@@ -471,6 +681,22 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					keyIssues = append(keyIssues, fmt.Sprintf("Stale IAM user (no console login for %.0f days)", daysSinceLogin))
 				}
 			}
+			if !consoleUnused {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   userName,
+					ResourceType: "SecaaS-IAM",
+					Region:       "global",
+					Status:       "PASS",
+					RuleID:       "iam_user_console_access_unused",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"UserName":       userName,
+						"StatusExtended": fmt.Sprintf("Console access for user %s is not unused for > 45 days.", userName),
+						"Recommendation": "Disable console login profile for users that have not logged in for 45+ days.",
+					},
+					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
+				})
+			}
 
 			if hasStaleKeys {
 				results = append(results, scanner.ScanResult{
@@ -485,6 +711,22 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 						"UserName":       userName,
 						"StatusExtended": fmt.Sprintf("IAM user %s has access keys older than 90 days without rotation or stale credentials.", userName),
 						"SecurityIssues": keyIssues,
+						"Recommendation": "Rotate IAM access keys every 90 days or less and disable unused credentials.",
+					},
+					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
+				})
+			} else {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   userName,
+					ResourceType: "SecaaS-IAM",
+					Region:       "global",
+					Status:       "PASS",
+					IsOrphaned:   false,
+					RuleID:       "iam_rotate_access_key_90_days",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"UserName":       userName,
+						"StatusExtended": fmt.Sprintf("IAM user %s access keys are rotated within 90 days.", userName),
 						"Recommendation": "Rotate IAM access keys every 90 days or less and disable unused credentials.",
 					},
 					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
@@ -515,6 +757,22 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					},
 					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
 				})
+			} else {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   userName,
+					ResourceType: "SecaaS-IAM",
+					Region:       "global",
+					Status:       "PASS",
+					IsOrphaned:   false,
+					RuleID:       "iam_user_mfa_enabled_console_access",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"UserName":       userName,
+						"StatusExtended": fmt.Sprintf("IAM user %s has MFA enabled.", userName),
+						"Recommendation": "Enable Multi-Factor Authentication (MFA) for the IAM user.",
+					},
+					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
+				})
 			}
 
 			attachedPolicies, err := s.client.ListAttachedUserPolicies(ctx, &iam.ListAttachedUserPoliciesInput{UserName: aws.String(userName)})
@@ -536,6 +794,22 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 						"PolicyCount":    len(attachedPolicies.AttachedPolicies),
 						"StatusExtended": fmt.Sprintf("IAM user %s has %d policies directly attached instead of inherited via groups.", userName, len(attachedPolicies.AttachedPolicies)),
 						"SecurityIssues": []string{"Direct policy attachment to user"},
+						"Recommendation": "Attach managed policies exclusively to IAM groups or roles, not directly to individual users.",
+					},
+					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
+				})
+			} else {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   userName,
+					ResourceType: "SecaaS-IAM",
+					Region:       "global",
+					Status:       "PASS",
+					RuleID:       "iam_policy_attached_only_to_group_or_roles",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"UserName":       userName,
+						"PolicyCount":    0,
+						"StatusExtended": fmt.Sprintf("IAM user %s has no directly attached managed policies.", userName),
 						"Recommendation": "Attach managed policies exclusively to IAM groups or roles, not directly to individual users.",
 					},
 					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
@@ -569,6 +843,22 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 						Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
 					})
 				}
+			}
+			if !userHasAdminAccess {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   userName,
+					ResourceType: "SecaaS-IAM",
+					Region:       "global",
+					Status:       "PASS",
+					RuleID:       "iam_aws_attached_policy_no_administrative_privileges",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"UserName":       userName,
+						"StatusExtended": fmt.Sprintf("IAM user %s does not have AWS managed AdministratorAccess policy attached.", userName),
+						"Recommendation": "Detach AdministratorAccess and use scoped least-privilege IAM roles instead.",
+					},
+					Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
+				})
 			}
 
 			// iam_user_administrator_access_policy (CRITICAL)
@@ -639,6 +929,22 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 							},
 							Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
 						})
+					} else {
+						results = append(results, scanner.ScanResult{
+							ResourceID:   userName,
+							ResourceType: "SecaaS-IAM",
+							Region:       "global",
+							Status:       "PASS",
+							RuleID:       "iam_customer_attached_policy_no_administrative_privileges",
+							Severity:     "INFO",
+							Metrics: map[string]interface{}{
+								"UserName":       userName,
+								"PolicyName":     pName,
+								"StatusExtended": fmt.Sprintf("Inline policy %s for user %s does not grant full administrative privileges (*:*).", pName, userName),
+								"Recommendation": "Scope customer policy actions away from wildcard *:*.",
+							},
+							Nodes: []graph.Node{{ID: userName, NodeType: "SecaaS-IAM"}},
+						})
 					}
 
 					// iam_inline_policy_no_administrative_privileges (CRITICAL)
@@ -699,11 +1005,17 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	hasSupportRole := false
 	rolesPaginator := iam.NewListRolesPaginator(s.client, &iam.ListRolesInput{})
 	for rolesPaginator.HasMorePages() {
+		if scanner.ShouldStop(ctx, 0, 0) {
+			break
+		}
 		page, err := rolesPaginator.NextPage(ctx)
 		if err != nil {
 			return nil, err
 		}
 		for _, role := range page.Roles {
+			if scanner.ShouldStop(ctx, 0, 0) {
+				break
+			}
 			roleName := aws.ToString(role.RoleName)
 			roleArn := aws.ToString(role.Arn)
 
@@ -770,18 +1082,29 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			}
 
 			// iam_role_unused (Severity: LOW)
-			isStale := false
-			if role.RoleLastUsed != nil {
-				if role.RoleLastUsed.LastUsedDate != nil {
-					daysSinceUsed := time.Since(*role.RoleLastUsed.LastUsedDate).Hours() / 24
-					if daysSinceUsed > 90 {
-						isStale = true
+			// ListRoles in AWS IAM API does not populate RoleLastUsed; fetch via GetRole when nil.
+			roleLastUsed := role.RoleLastUsed
+			createDate := role.CreateDate
+			if roleLastUsed == nil {
+				getRoleOut, getRoleErr := s.client.GetRole(ctx, &iam.GetRoleInput{RoleName: role.RoleName})
+				if getRoleErr == nil && getRoleOut != nil && getRoleOut.Role != nil {
+					roleLastUsed = getRoleOut.Role.RoleLastUsed
+					if createDate == nil {
+						createDate = getRoleOut.Role.CreateDate
 					}
-				} else {
-					isStale = true // Never used
 				}
-			} else {
-				isStale = true // Never used
+			}
+			isStale := false
+			if roleLastUsed != nil && roleLastUsed.LastUsedDate != nil {
+				if time.Since(*roleLastUsed.LastUsedDate) > 90*24*time.Hour {
+					isStale = true
+				}
+			} else if createDate != nil {
+				if time.Since(*createDate) > 90*24*time.Hour {
+					isStale = true
+				}
+			} else if roleLastUsed != nil && roleLastUsed.LastUsedDate == nil {
+				isStale = true
 			}
 
 			if isStale {
@@ -801,9 +1124,26 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					},
 					Nodes: []graph.Node{{ID: roleName, NodeType: "SecaaS-IAM-Role"}},
 				})
+			} else {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   roleName,
+					ResourceType: "SecaaS-IAM-Role",
+					Region:       "global",
+					Status:       "PASS",
+					IsOrphaned:   false,
+					RuleID:       "iam_role_unused",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"RoleName":       roleName,
+						"StatusExtended": fmt.Sprintf("IAM Role %s has been used within the last 90 days or was created recently.", roleName),
+						"Recommendation": "IAM Role unused for 90+ days. Consider removing inactive roles to reduce attack surface.",
+					},
+					Nodes: []graph.Node{{ID: roleName, NodeType: "SecaaS-IAM-Role"}},
+				})
 			}
 
 			// iam_role_cross_account_readonlyaccess_policy (Severity: HIGH)
+			hasCrossAccount := false
 			parts := strings.Split(roleArn, ":")
 			if len(parts) >= 5 {
 				currentAccountID := parts[4]
@@ -820,10 +1160,9 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 								statements = []interface{}{v}
 							}
 
-							hasCrossAccount := false
 							for _, stmtItem := range statements {
 								if stmt, ok := stmtItem.(map[string]interface{}); ok {
-									if effect, ok := stmt["Effect"].(string); ok && effect == "Allow" {
+									if effect, ok := stmt["Effect"].(string); ok && strings.EqualFold(effect, "Allow") {
 										if principal, ok := stmt["Principal"].(map[string]interface{}); ok {
 											awsPrincipal := principal["AWS"]
 											checkCrossAccount := func(p string) bool {
@@ -852,28 +1191,44 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 									}
 								}
 							}
-
-							if hasCrossAccount {
-								results = append(results, scanner.ScanResult{
-									ResourceID:   roleName,
-									ResourceType: "SecaaS-IAM-Role",
-									Region:       "global",
-									Status:       "FAIL",
-									IsOrphaned:   false,
-									RuleID:       "iam_role_cross_account_readonlyaccess_policy",
-									Severity:     "HIGH",
-									Metrics: map[string]interface{}{
-										"RoleName":       roleName,
-										"StatusExtended": fmt.Sprintf("IAM Role %s trust policy grants access to external account or wildcard principal (*).", roleName),
-										"SecurityIssues": []string{"IAM Role trust policy grants access to external account or wildcard principal (*)"},
-										"Recommendation": "IAM Role trusts an external account or wildcard principal. Verify trust relationship in AssumeRolePolicyDocument.",
-									},
-									Nodes: []graph.Node{{ID: roleName, NodeType: "SecaaS-IAM-Role"}},
-								})
-							}
 						}
 					}
 				}
+			}
+
+			if hasCrossAccount {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   roleName,
+					ResourceType: "SecaaS-IAM-Role",
+					Region:       "global",
+					Status:       "FAIL",
+					IsOrphaned:   false,
+					RuleID:       "iam_role_cross_account_readonlyaccess_policy",
+					Severity:     "HIGH",
+					Metrics: map[string]interface{}{
+						"RoleName":       roleName,
+						"StatusExtended": fmt.Sprintf("IAM Role %s trust policy grants access to external account or wildcard principal (*).", roleName),
+						"SecurityIssues": []string{"IAM Role trust policy grants access to external account or wildcard principal (*)"},
+						"Recommendation": "IAM Role trusts an external account or wildcard principal. Verify trust relationship in AssumeRolePolicyDocument.",
+					},
+					Nodes: []graph.Node{{ID: roleName, NodeType: "SecaaS-IAM-Role"}},
+				})
+			} else {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   roleName,
+					ResourceType: "SecaaS-IAM-Role",
+					Region:       "global",
+					Status:       "PASS",
+					IsOrphaned:   false,
+					RuleID:       "iam_role_cross_account_readonlyaccess_policy",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"RoleName":       roleName,
+						"StatusExtended": fmt.Sprintf("IAM Role %s trust policy does not grant unrestricted cross-account access.", roleName),
+						"Recommendation": "IAM Role trusts an external account or wildcard principal. Verify trust relationship in AssumeRolePolicyDocument.",
+					},
+					Nodes: []graph.Node{{ID: roleName, NodeType: "SecaaS-IAM-Role"}},
+				})
 			}
 		}
 	}
@@ -894,14 +1249,35 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			},
 			Nodes: []graph.Node{{ID: "AccountSupportRole", NodeType: "SecaaS-IAM"}},
 		})
+	} else {
+		results = append(results, scanner.ScanResult{
+			ResourceID:   "AccountSupportRole",
+			ResourceType: "SecaaS-IAM",
+			Region:       "global",
+			Status:       "PASS",
+			RuleID:       "iam_support_role_created",
+			Severity:     "INFO",
+			Metrics: map[string]interface{}{
+				"StatusExtended": "IAM role with AWSSupportAccess policy attached is present.",
+				"Recommendation": "Create an IAM role with the AWSSupportAccess managed policy attached for AWS Support operations.",
+			},
+			Nodes: []graph.Node{{ID: "AccountSupportRole", NodeType: "SecaaS-IAM"}},
+		})
 	}
 
 	// 5. Check Group Inline Policies (iam_inline_policy_no_administrative_privileges)
 	inspectedGroups := make(map[string]bool)
 	var allGroups []string
 
-	groupsOut, groupsErr := s.client.ListGroups(ctx, &iam.ListGroupsInput{})
-	if groupsErr == nil && groupsOut != nil {
+	groupsPaginator := iam.NewListGroupsPaginator(s.client, &iam.ListGroupsInput{})
+	for groupsPaginator.HasMorePages() {
+		if scanner.ShouldStop(ctx, 0, 0) {
+			break
+		}
+		groupsOut, groupsErr := groupsPaginator.NextPage(ctx)
+		if groupsErr != nil || groupsOut == nil {
+			break
+		}
 		for _, g := range groupsOut.Groups {
 			gName := aws.ToString(g.GroupName)
 			if gName != "" && !inspectedGroups[gName] {
@@ -918,6 +1294,9 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	}
 
 	for _, gName := range allGroups {
+		if scanner.ShouldStop(ctx, 0, 0) {
+			break
+		}
 		gPolicies, err := s.client.ListGroupPolicies(ctx, &iam.ListGroupPoliciesInput{GroupName: aws.String(gName)})
 		if err == nil && gPolicies != nil {
 			for _, pName := range gPolicies.PolicyNames {
@@ -974,11 +1353,17 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		Scope: types.PolicyScopeTypeLocal,
 	})
 	for policiesPaginator.HasMorePages() {
+		if scanner.ShouldStop(ctx, 0, 0) {
+			break
+		}
 		page, err := policiesPaginator.NextPage(ctx)
 		if err != nil {
 			break
 		}
 		for _, policy := range page.Policies {
+			if scanner.ShouldStop(ctx, 0, 0) {
+				break
+			}
 			policyArn := aws.ToString(policy.Arn)
 			policyName := aws.ToString(policy.PolicyName)
 			if policyArn == "" {
@@ -1042,38 +1427,7 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 }
 
 func isWildcardDoc(docStr string) bool {
-	doc, err := url.QueryUnescape(docStr)
-	if err != nil {
-		return false
-	}
-	var docMap map[string]interface{}
-	if err := json.Unmarshal([]byte(doc), &docMap); err != nil {
-		return false
-	}
-	var statements []interface{}
-	switch v := docMap["Statement"].(type) {
-	case []interface{}:
-		statements = v
-	case map[string]interface{}:
-		statements = []interface{}{v}
-	}
-
-	for _, stmtItem := range statements {
-		if stmt, ok := stmtItem.(map[string]interface{}); ok {
-			if action, ok := stmt["Action"]; ok {
-				if actStr, ok := action.(string); ok && actStr == "*" {
-					return true
-				} else if actList, ok := action.([]interface{}); ok {
-					for _, actItem := range actList {
-						if actStr, ok := actItem.(string); ok && actStr == "*" {
-							return true
-						}
-					}
-				}
-			}
-		}
-	}
-	return false
+	return isAdministrativeWildcard(docStr)
 }
 
 func isAdministrativeWildcard(docStr string) bool {

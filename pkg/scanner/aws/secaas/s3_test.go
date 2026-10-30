@@ -160,15 +160,15 @@ func TestS3Scanner_Scan(t *testing.T) {
 				},
 			},
 			expectedErr: false,
-			expectedLen: 4,
+			expectedLen: 11,
 			verifyFindings: func(t *testing.T, results []scanner.ScanResult) {
 				for _, r := range results {
 					if r.Status != "PASS" {
 						t.Errorf("expected only PASS findings for compliant bucket, got %s for rule %s", r.Status, r.RuleID)
 					}
 				}
-				if len(results) != 4 {
-					t.Errorf("expected 4 PASS findings, got %d: %+v", len(results), results)
+				if len(results) != 11 {
+					t.Errorf("expected 11 PASS findings, got %d: %+v", len(results), results)
 				}
 			},
 		},
@@ -342,7 +342,7 @@ func TestS3Scanner_Scan(t *testing.T) {
 				},
 			},
 			expectedErr: false,
-			expectedLen: 10,
+			expectedLen: 22,
 		},
 		{
 			name: "Missing Secure Transport Policy",
@@ -864,6 +864,66 @@ func TestS3Scanner_Scan(t *testing.T) {
 				}
 				if !found {
 					t.Errorf("expected finding s3_bucket_kms_encryption")
+				}
+			},
+		},
+		{
+			name: "s3_bucket_public_access - Non-Restrictive Condition (Bool SecureTransport true) Remains Public",
+			mockAPI: &mockS3API{
+				listBucketsOutput: &s3.ListBucketsOutput{
+					Buckets: []types.Bucket{{Name: aws.String("non-restrictive-cond-bucket")}},
+				},
+				getPublicAccessBlockOutput: &s3.GetPublicAccessBlockOutput{
+					PublicAccessBlockConfiguration: &types.PublicAccessBlockConfiguration{
+						BlockPublicAcls:       aws.Bool(true),
+						BlockPublicPolicy:     aws.Bool(true),
+						IgnorePublicAcls:      aws.Bool(true),
+						RestrictPublicBuckets: aws.Bool(true),
+					},
+				},
+				getBucketPolicyOutput: &s3.GetBucketPolicyOutput{
+					Policy: aws.String(`{"Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::b/*","Condition":{"Bool":{"aws:SecureTransport":"true"}}}]}`),
+				},
+			},
+			verifyFindings: func(t *testing.T, results []scanner.ScanResult) {
+				foundPublic := false
+				for _, r := range results {
+					if r.RuleID == "s3_bucket_public_access" && r.Status == "FAIL" {
+						foundPublic = true
+					}
+				}
+				if !foundPublic {
+					t.Errorf("expected FAIL for s3_bucket_public_access when condition only checks aws:SecureTransport")
+				}
+			},
+		},
+		{
+			name: "s3_bucket_public_access - Restrictive PrincipalOrgID Condition Is Compliant",
+			mockAPI: &mockS3API{
+				listBucketsOutput: &s3.ListBucketsOutput{
+					Buckets: []types.Bucket{{Name: aws.String("org-restricted-bucket")}},
+				},
+				getPublicAccessBlockOutput: &s3.GetPublicAccessBlockOutput{
+					PublicAccessBlockConfiguration: &types.PublicAccessBlockConfiguration{
+						BlockPublicAcls:       aws.Bool(true),
+						BlockPublicPolicy:     aws.Bool(true),
+						IgnorePublicAcls:      aws.Bool(true),
+						RestrictPublicBuckets: aws.Bool(true),
+					},
+				},
+				getBucketPolicyOutput: &s3.GetBucketPolicyOutput{
+					Policy: aws.String(`{"Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::b/*","Condition":{"StringEquals":{"aws:PrincipalOrgID":"o-123456"}}}]}`),
+				},
+			},
+			verifyFindings: func(t *testing.T, results []scanner.ScanResult) {
+				foundPass := false
+				for _, r := range results {
+					if r.RuleID == "s3_bucket_public_access" && r.Status == "PASS" {
+						foundPass = true
+					}
+				}
+				if !foundPass {
+					t.Errorf("expected PASS for s3_bucket_public_access when condition restricts aws:PrincipalOrgID")
 				}
 			},
 		},

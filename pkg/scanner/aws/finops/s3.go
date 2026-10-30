@@ -15,7 +15,7 @@ import (
 
 type S3Scanner struct {
 	client   *s3.Client
-	cwClient *cloudwatch.Client
+	cwClient CloudWatchMetricAPI
 }
 
 // Ensure S3Scanner satisfies MetaScanner at compile time.
@@ -110,7 +110,10 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	return results, nil
 }
 
-func fetchS3BucketSize(ctx context.Context, client *cloudwatch.Client, bucketName string) float64 {
+func fetchS3BucketSize(ctx context.Context, client CloudWatchMetricAPI, bucketName string) float64 {
+	if client == nil {
+		return 0
+	}
 	endTime := time.Now()
 	startTime := endTime.Add(-48 * time.Hour)
 
@@ -134,7 +137,7 @@ func fetchS3BucketSize(ctx context.Context, client *cloudwatch.Client, bucketNam
 	}
 
 	output, err := client.GetMetricStatistics(ctx, input)
-	if err != nil || len(output.Datapoints) == 0 {
+	if err != nil || output == nil || len(output.Datapoints) == 0 {
 		return 0
 	}
 	return aws.ToFloat64(output.Datapoints[0].Average)

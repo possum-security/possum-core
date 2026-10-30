@@ -13,6 +13,7 @@ import (
 // EIPScanner checks for Elastic IPs that are allocated but not associated with any instance.
 type EIPScanner struct {
 	client *ec2.Client
+	region string
 }
 
 // Ensure EIPScanner satisfies MetaScanner at compile time.
@@ -21,6 +22,7 @@ var _ scanner.MetaScanner = (*EIPScanner)(nil)
 func NewEIPScanner(cfg aws.Config) *EIPScanner {
 	return &EIPScanner{
 		client: ec2.NewFromConfig(cfg),
+		region: cfg.Region,
 	}
 }
 
@@ -82,7 +84,7 @@ func (s *EIPScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		results = append(results, BuildFinOpsResult(FinOpsResultParams{
 			ResourceID:   allocID,
 			ResourceType: "EIP",
-			Region:       "global",
+			Region:       resolveRegion(s.region, "regional"),
 			RuleID:       RuleEIPUnassigned,
 			DisplayName:  publicIP,
 			IsOrphaned:   isOrphaned,

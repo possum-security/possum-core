@@ -316,6 +316,6 @@ func (s *NeptuneScanner) Meta() scanner.ScannerMeta {
 		Scope:         graph.ScopeRegional,
 		ExecutionCost: scanner.CostMedium,
 		Service:       "neptune",
-		CheckIDs:      []string{"neptune_cluster_public_snapshot", "neptune_cluster_storage_encrypted"},
+		CheckIDs:      []string{"neptune_cluster_backup_enabled", "neptune_cluster_public_snapshot", "neptune_cluster_storage_encrypted"},
 	}
 }

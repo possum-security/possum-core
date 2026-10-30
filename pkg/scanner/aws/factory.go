@@ -51,6 +51,18 @@ func GetRegionalScanners(cfg aws.Config, ecrRetentionDays int, flagUntaggedECR b
 		secaas.NewNeptuneScanner(cfg),
 		secaas.NewBedrockScanner(cfg),
 		secaas.NewSageMakerScanner(cfg),
+		secaas.NewBackupScanner(cfg),
+		secaas.NewSecurityHubScanner(cfg),
+		secaas.NewWAFv2Scanner(cfg),
+		secaas.NewEFSScanner(cfg),
+		secaas.NewDMSScanner(cfg),
+		secaas.NewKafkaScanner(cfg),
+		secaas.NewCodeBuildScanner(cfg),
+		secaas.NewStepFunctionsScanner(cfg),
+		secaas.NewEventBridgeScanner(cfg),
+		secaas.NewElastiCacheScanner(cfg),
+		secaas.NewDocumentDBScanner(cfg),
+		secaas.NewAutoScalingScanner(cfg),
 	}
 }
 

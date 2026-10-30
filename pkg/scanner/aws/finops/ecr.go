@@ -25,6 +25,7 @@ type ECRScanner struct {
 	client        ECRClient
 	RetentionDays int
 	FlagUntagged  bool
+	region        string
 }
 
 // Ensure ECRScanner satisfies MetaScanner at compile time.
@@ -38,6 +39,7 @@ func NewECRScanner(cfg aws.Config, retentionDays int, flagUntagged bool) *ECRSca
 		client:        ecr.NewFromConfig(cfg),
 		RetentionDays: retentionDays,
 		FlagUntagged:  flagUntagged,
+		region:        cfg.Region,
 	}
 }
 
@@ -162,7 +164,7 @@ func (s *ECRScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					results = append(results, BuildFinOpsResult(FinOpsResultParams{
 						ResourceID:   digest,
 						ResourceType: "ECR_IMAGE",
-						Region:       "global",
+						Region:       resolveRegion(s.region, "regional"),
 						RuleID:       RuleECRImageUntaggedOrStale,
 						DisplayName:  fmt.Sprintf("%s@%s", repoName, digest),
 						IsOrphaned:   isOrphaned,

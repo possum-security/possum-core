@@ -224,6 +224,6 @@ func (s *SageMakerScanner) Meta() scanner.ScannerMeta {
 		Scope:         graph.ScopeRegional,
 		ExecutionCost: scanner.CostMedium,
 		Service:       "sagemaker",
-		CheckIDs:      []string{"sagemaker_notebook_instance_root_access_disabled"},
+		CheckIDs:      []string{"sagemaker_notebook_instance_encryption_enabled", "sagemaker_notebook_instance_root_access_disabled", "sagemaker_notebook_instance_vpc_settings_configured"},
 	}
 }

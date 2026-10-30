@@ -47,20 +47,30 @@ func (s *GuardDutyScanner) Name() string {
 }
 
 func (s *GuardDutyScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
+	limit := scanner.GetResourceLimit(ctx)
+	processedCount := 0
 	var results []scanner.ScanResult
 	region := s.region
 	if region == "" {
 		region = "global"
 	}
 
-	detectorsOut, err := s.client.ListDetectors(ctx, &guardduty.ListDetectorsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list GuardDuty detectors: %w", err)
+	var allDetectorIds []string
+	detectorsPaginator := guardduty.NewListDetectorsPaginator(s.client, &guardduty.ListDetectorsInput{})
+	for detectorsPaginator.HasMorePages() {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
+			break
+		}
+		detectorsOut, err := detectorsPaginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list GuardDuty detectors: %w", err)
+		}
+		allDetectorIds = append(allDetectorIds, detectorsOut.DetectorIds...)
 	}
 
 	resourceID := fmt.Sprintf("guardduty-%s", region)
 
-	if len(detectorsOut.DetectorIds) == 0 {
+	if len(allDetectorIds) == 0 {
 		// GuardDuty is not enabled in this region
 		results = append(results, scanner.ScanResult{
 			ResourceID:   resourceID,
@@ -79,7 +89,12 @@ func (s *GuardDutyScanner) Scan(ctx context.Context) ([]scanner.ScanResult, erro
 		return results, nil
 	}
 
-	for _, detectorID := range detectorsOut.DetectorIds {
+	for _, detectorID := range allDetectorIds {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
+			break
+		}
+		processedCount++
+
 		det, err := s.client.GetDetector(ctx, &guardduty.GetDetectorInput{
 			DetectorId: aws.String(detectorID),
 		})
@@ -124,7 +139,9 @@ func (s *GuardDutyScanner) Scan(ctx context.Context) ([]scanner.ScanResult, erro
 		}
 
 		// 2. Check for High Severity Findings (guardduty_no_high_severity_findings - HIGH)
-		findingsOut, err := s.client.ListFindings(ctx, &guardduty.ListFindingsInput{
+		var allFindingIds []string
+		var findingsErr error
+		findingsPaginator := guardduty.NewListFindingsPaginator(s.client, &guardduty.ListFindingsInput{
 			DetectorId: aws.String(detectorID),
 			FindingCriteria: &guarddutytypes.FindingCriteria{
 				Criterion: map[string]guarddutytypes.Condition{
@@ -137,8 +154,21 @@ func (s *GuardDutyScanner) Scan(ctx context.Context) ([]scanner.ScanResult, erro
 				},
 			},
 		})
-		if err == nil {
-			if len(findingsOut.FindingIds) > 0 {
+		for findingsPaginator.HasMorePages() {
+			if scanner.ShouldStop(ctx, 0, 0) {
+				break
+			}
+			findingsOut, err := findingsPaginator.NextPage(ctx)
+			if err != nil {
+				findingsErr = err
+				break
+			}
+			if findingsOut != nil {
+				allFindingIds = append(allFindingIds, findingsOut.FindingIds...)
+			}
+		}
+		if findingsErr == nil {
+			if len(allFindingIds) > 0 {
 				results = append(results, scanner.ScanResult{
 					ResourceID:   detectorID,
 					ResourceType: "SecaaS-GuardDutyDetector",
@@ -148,9 +178,9 @@ func (s *GuardDutyScanner) Scan(ctx context.Context) ([]scanner.ScanResult, erro
 					Severity:     "HIGH",
 					Metrics: map[string]interface{}{
 						"DetectorId":     detectorID,
-						"FindingCount":   len(findingsOut.FindingIds),
-						"StatusExtended": fmt.Sprintf("GuardDuty detector %s has %d unresolved high-severity security findings.", detectorID, len(findingsOut.FindingIds)),
-						"SecurityIssues": []string{fmt.Sprintf("%d active high severity findings", len(findingsOut.FindingIds))},
+						"FindingCount":   len(allFindingIds),
+						"StatusExtended": fmt.Sprintf("GuardDuty detector %s has %d unresolved high-severity security findings.", detectorID, len(allFindingIds)),
+						"SecurityIssues": []string{fmt.Sprintf("%d active high severity findings", len(allFindingIds))},
 						"Recommendation": "Investigate and remediate high-severity GuardDuty findings immediately.",
 					},
 					Nodes: []graph.Node{{ID: detArn, NodeType: "SecaaS-GuardDutyDetector"}},

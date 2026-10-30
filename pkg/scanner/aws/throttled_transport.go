@@ -154,11 +154,13 @@ var DefaultServiceRates = map[string]ServiceRateConfig{
 
 // ThrottledTransport intercepts HTTP requests to provide per-service rate limiting and telemetry tracking.
 type ThrottledTransport struct {
-	base      http.RoundTripper
-	accountID string
-	recorder  APICallTelemetryRecorder
-	mu        sync.RWMutex
-	limiters  map[string]*rate.Limiter
+	base       http.RoundTripper
+	accountID  string
+	recorder   APICallTelemetryRecorder
+	mu         sync.RWMutex
+	limiters   map[string]*rate.Limiter
+	MaxRetries int
+	BaseDelay  time.Duration
 }
 
 // NewThrottledTransport wraps an existing RoundTripper with rate-limiting queues and telemetry.
@@ -174,16 +176,40 @@ func NewThrottledTransport(base http.RoundTripper, accountID string, recorder ..
 	}
 
 	return &ThrottledTransport{
-		base:      base,
-		accountID: accountID,
-		recorder:  rec,
-		limiters:  make(map[string]*rate.Limiter),
+		base:       base,
+		accountID:  accountID,
+		recorder:   rec,
+		limiters:   make(map[string]*rate.Limiter),
+		MaxRetries: 3,
+		BaseDelay:  50 * time.Millisecond,
 	}
 }
 
+// AccountID returns the account identifier associated with this throttled transport.
+func (t *ThrottledTransport) AccountID() string {
+	return t.accountID
+}
+
+// Base returns the underlying RoundTripper wrapped by this throttled transport.
+func (t *ThrottledTransport) Base() http.RoundTripper {
+	return t.base
+}
+
+func (t *ThrottledTransport) limiterKey(service string) string {
+	if t.accountID == "" {
+		return service
+	}
+	return t.accountID + ":" + service
+}
+
 func (t *ThrottledTransport) getLimiter(service string) *rate.Limiter {
+	key := t.limiterKey(service)
+
 	t.mu.RLock()
-	l, ok := t.limiters[service]
+	l, ok := t.limiters[key]
+	if !ok {
+		l, ok = t.limiters[service]
+	}
 	t.mu.RUnlock()
 	if ok {
 		return l
@@ -192,6 +218,9 @@ func (t *ThrottledTransport) getLimiter(service string) *rate.Limiter {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	// Re-check under write lock
+	if l, ok = t.limiters[key]; ok {
+		return l
+	}
 	if l, ok = t.limiters[service]; ok {
 		return l
 	}
@@ -201,8 +230,51 @@ func (t *ThrottledTransport) getLimiter(service string) *rate.Limiter {
 		cfg = DefaultServiceRates["default"]
 	}
 	l = rate.NewLimiter(cfg.RateLimit, cfg.Burst)
-	t.limiters[service] = l
+	t.limiters[key] = l
 	return l
+}
+
+var awsThrottleErrorCodes = []string{
+	"Throttling",
+	"ThrottlingException",
+	"ThrottledException",
+	"RequestLimitExceeded",
+	"TooManyRequestsException",
+	"ProvisionedThroughputExceededException",
+	"RequestThrottled",
+	"SlowDown",
+}
+
+func isThrottledResponse(resp *http.Response, err error) bool {
+	if err != nil {
+		lowerErr := strings.ToLower(err.Error())
+		if strings.Contains(lowerErr, "throttling") ||
+			strings.Contains(lowerErr, "throttled") ||
+			strings.Contains(lowerErr, "requestlimitexceeded") ||
+			strings.Contains(lowerErr, "toomanyrequests") ||
+			strings.Contains(lowerErr, "slowdown") {
+			return true
+		}
+	}
+	if resp != nil {
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+			return true
+		}
+		if resp.StatusCode == http.StatusBadRequest && resp.Body != nil {
+			bodyBytes, readErr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			if readErr == nil && len(bodyBytes) > 0 {
+				bodyStr := string(bodyBytes)
+				for _, code := range awsThrottleErrorCodes {
+					if strings.Contains(bodyStr, code) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (t *ThrottledTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -237,27 +309,77 @@ func (t *ThrottledTransport) RoundTrip(req *http.Request) (*http.Response, error
 		return nil, fmt.Errorf("AWS API queue wait canceled: %w", err)
 	}
 
-	// 2. Execute underlying HTTP call
+	// Preserve request body so throttled POST/PUT requests can be replayed safely
+	var reqBodyBytes []byte
+	hasBody := req.Body != nil
+	bodyReplayable := true
+	if hasBody {
+		var readErr error
+		reqBodyBytes, readErr = io.ReadAll(req.Body)
+		_ = req.Body.Close()
+		if readErr != nil {
+			bodyReplayable = false
+		} else {
+			req.Body = io.NopCloser(bytes.NewReader(reqBodyBytes))
+		}
+	}
+
+	maxRetries := t.MaxRetries
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+	baseDelay := t.BaseDelay
+	if baseDelay <= 0 {
+		baseDelay = 50 * time.Millisecond
+	}
+
+	// 2. Execute underlying HTTP call with exponential backoff on throttling
 	start := time.Now()
-	resp, err := t.base.RoundTrip(req)
+	var resp *http.Response
+	var err error
+	isThrottled := false
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+			delay := baseDelay * time.Duration(1<<(attempt-1))
+			timer := time.NewTimer(delay)
+			select {
+			case <-req.Context().Done():
+				timer.Stop()
+				err = req.Context().Err()
+				resp = nil
+			case <-timer.C:
+			}
+			if req.Context().Err() != nil {
+				break
+			}
+			if hasBody {
+				req.Body = io.NopCloser(bytes.NewReader(reqBodyBytes))
+			}
+		}
+
+		resp, err = t.base.RoundTrip(req)
+		if isThrottledResponse(resp, err) {
+			isThrottled = true
+			if attempt < maxRetries && bodyReplayable {
+				continue
+			}
+		}
+		break
+	}
 	duration := time.Since(start)
 
-	// 3. Inspect response for throttling
-	isThrottled := false
+	// 3. Extract status code and error message
 	statusCode := 0
 	errMsg := ""
 	if err != nil {
 		errMsg = err.Error()
-		if strings.Contains(strings.ToLower(errMsg), "throttling") ||
-			strings.Contains(strings.ToLower(errMsg), "requestlimitexceeded") {
-			isThrottled = true
-		}
 	}
 	if resp != nil {
 		statusCode = resp.StatusCode
-		if statusCode == http.StatusTooManyRequests || statusCode == 429 || statusCode == 503 {
-			isThrottled = true
-		}
 	}
 
 	// 4. Record Telemetry Event

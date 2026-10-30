@@ -14,6 +14,7 @@ import (
 // ENIScanner checks for detached / unattached Elastic Network Interfaces.
 type ENIScanner struct {
 	ec2Client *ec2.Client
+	region    string
 }
 
 // Ensure ENIScanner satisfies MetaScanner at compile time.
@@ -22,6 +23,7 @@ var _ scanner.MetaScanner = (*ENIScanner)(nil)
 func NewENIScanner(cfg aws.Config) *ENIScanner {
 	return &ENIScanner{
 		ec2Client: ec2.NewFromConfig(cfg),
+		region:    cfg.Region,
 	}
 }
 
@@ -82,7 +84,7 @@ func (s *ENIScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   eniID,
 				ResourceType: "ENI",
-				Region:       "regional",
+				Region:       resolveRegion(s.region, "regional"),
 				RuleID:       RuleENIDetachedUnused,
 				DisplayName:  eniID,
 				IsOrphaned:   isOrphaned,

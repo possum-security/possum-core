@@ -62,10 +62,7 @@ func (s *S3Scanner) Name() string {
 }
 
 func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
-	limit := 0
-	if val, ok := ctx.Value("ResourceLimit").(int); ok {
-		limit = val
-	}
+	limit := scanner.GetResourceLimit(ctx)
 	processedCount := 0
 	var results []scanner.ScanResult
 	output, err := s.client.ListBuckets(ctx, &s3.ListBucketsInput{})
@@ -74,7 +71,7 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	}
 
 	for _, bucket := range output.Buckets {
-		if limit > 0 && processedCount >= limit {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
 			break
 		}
 		processedCount++
@@ -119,6 +116,26 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					},
 				},
 			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   bucketName,
+				ResourceType: "SecaaS-S3",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "s3_bucket_level_public_access_block",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"BucketName":     bucketName,
+					"StatusExtended": fmt.Sprintf("Block Public Access is fully configured for S3 bucket %s.", bucketName),
+					"Recommendation": "Enable all 4 S3 Block Public Access settings at the bucket level.",
+				},
+				Nodes: []graph.Node{
+					{
+						ID:       bucketName,
+						NodeType: "SecaaS-S3",
+					},
+				},
+			})
 		}
 
 		// 2. Check server-side encryption (s3_bucket_default_encryption - MEDIUM) & KMS CMK (s3_bucket_kms_encryption - HIGH)
@@ -138,6 +155,26 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					"StatusExtended": fmt.Sprintf("S3 bucket %s does not have default server-side encryption enabled.", bucketName),
 					"Recommendation": "Enable default server-side encryption (SSE-S3 or SSE-KMS) for the S3 bucket.",
 					"SecurityIssues": []string{"Missing server-side encryption"},
+				},
+				Nodes: []graph.Node{
+					{
+						ID:       bucketName,
+						NodeType: "SecaaS-S3",
+					},
+				},
+			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   bucketName,
+				ResourceType: "SecaaS-S3",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "s3_bucket_default_encryption",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"BucketName":     bucketName,
+					"StatusExtended": fmt.Sprintf("S3 bucket %s has default server-side encryption enabled.", bucketName),
+					"Recommendation": "Enable default server-side encryption (SSE-S3 or SSE-KMS) for the S3 bucket.",
 				},
 				Nodes: []graph.Node{
 					{
@@ -211,7 +248,7 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		ver, err := s.client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{
 			Bucket: aws.String(bucketName),
 		})
-		if err != nil || string(ver.Status) != "Enabled" {
+		if err != nil || ver == nil || string(ver.Status) != "Enabled" {
 			results = append(results, scanner.ScanResult{
 				ResourceID:   bucketName,
 				ResourceType: "SecaaS-S3",
@@ -232,8 +269,28 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					},
 				},
 			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   bucketName,
+				ResourceType: "SecaaS-S3",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "s3_bucket_object_versioning",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"BucketName":     bucketName,
+					"StatusExtended": fmt.Sprintf("S3 bucket %s has object versioning enabled.", bucketName),
+					"Recommendation": "Enable object versioning for the S3 bucket to prevent accidental deletion or overwrite.",
+				},
+				Nodes: []graph.Node{
+					{
+						ID:       bucketName,
+						NodeType: "SecaaS-S3",
+					},
+				},
+			})
 		}
-		if ver != nil && string(ver.MFADelete) != "Enabled" {
+		if ver == nil || string(ver.MFADelete) != "Enabled" {
 			results = append(results, scanner.ScanResult{
 				ResourceID:   bucketName,
 				ResourceType: "SecaaS-S3",
@@ -254,6 +311,26 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					},
 				},
 			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   bucketName,
+				ResourceType: "SecaaS-S3",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "s3_bucket_no_mfa_delete",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"BucketName":     bucketName,
+					"StatusExtended": fmt.Sprintf("S3 bucket %s has MFA Delete enabled.", bucketName),
+					"Recommendation": "Enable MFA Delete on S3 versioned buckets to prevent irreversible object deletion without MFA token.",
+				},
+				Nodes: []graph.Node{
+					{
+						ID:       bucketName,
+						NodeType: "SecaaS-S3",
+					},
+				},
+			})
 		}
 
 		// 4. Check bucket policy public access & secure transport
@@ -263,88 +340,50 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		hasSecureTransportPolicy := false
 		hasPublicPolicy := false
 		if polErr == nil && policyOutput != nil && policyOutput.Policy != nil {
-			var rawDoc map[string]interface{}
-			if json.Unmarshal([]byte(*policyOutput.Policy), &rawDoc) == nil {
-				var stmts []interface{}
-				switch v := rawDoc["Statement"].(type) {
-				case []interface{}:
-					stmts = v
-				case map[string]interface{}:
-					stmts = []interface{}{v}
-				}
+			hasPublicPolicy, hasSecureTransportPolicy = evaluateBucketPolicy(*policyOutput.Policy)
+		}
 
-				for _, stmtItem := range stmts {
-					if stmt, ok := stmtItem.(map[string]interface{}); ok {
-						effect, _ := stmt["Effect"].(string)
-						if effect == "Allow" {
-							isPublicPrincipal := false
-							switch p := stmt["Principal"].(type) {
-							case string:
-								if p == "*" {
-									isPublicPrincipal = true
-								}
-							case map[string]interface{}:
-								if awsVal, ok := p["AWS"]; ok {
-									switch av := awsVal.(type) {
-									case string:
-										if av == "*" {
-											isPublicPrincipal = true
-										}
-									case []interface{}:
-										for _, item := range av {
-											if itemStr, ok := item.(string); ok && itemStr == "*" {
-												isPublicPrincipal = true
-												break
-											}
-										}
-									}
-								}
-							}
-							if isPublicPrincipal {
-								cond, hasCond := stmt["Condition"].(map[string]interface{})
-								if !hasCond || len(cond) == 0 {
-									hasPublicPolicy = true
-								}
-							}
-						}
-						// Check secure transport denial: Effect == Deny && Condition.Bool.aws:SecureTransport == false
-						if effect == "Deny" {
-							if cond, ok := stmt["Condition"].(map[string]interface{}); ok {
-								if boolCond, ok := cond["Bool"].(map[string]interface{}); ok {
-									if secVal, ok := boolCond["aws:SecureTransport"]; ok {
-										if secVal == "false" || secVal == false {
-											hasSecureTransportPolicy = true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-
-				if hasPublicPolicy {
-					results = append(results, scanner.ScanResult{
-						ResourceID:   bucketName,
-						ResourceType: "SecaaS-S3",
-						Region:       "global",
-						Status:       "FAIL",
-						RuleID:       "s3_bucket_policy_public_write_access",
-						Severity:     "CRITICAL",
-						Metrics: map[string]interface{}{
-							"BucketName":     bucketName,
-							"StatusExtended": fmt.Sprintf("S3 bucket %s has a bucket policy granting public access to everyone (*).", bucketName),
-							"Recommendation": "Remove public access policies from S3 bucket and restrict access to authorized principals only.",
-							"SecurityIssues": []string{"Bucket policy grants public access to everyone (*)"},
-						},
-						Nodes: []graph.Node{
-							{
-								ID:       bucketName,
-								NodeType: "SecaaS-S3",
-							},
-						},
-					})
-				}
-			}
+		if hasPublicPolicy {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   bucketName,
+				ResourceType: "SecaaS-S3",
+				Region:       "global",
+				Status:       "FAIL",
+				RuleID:       "s3_bucket_policy_public_write_access",
+				Severity:     "CRITICAL",
+				Metrics: map[string]interface{}{
+					"BucketName":     bucketName,
+					"StatusExtended": fmt.Sprintf("S3 bucket %s has a bucket policy granting public access to everyone (*).", bucketName),
+					"Recommendation": "Remove public access policies from S3 bucket and restrict access to authorized principals only.",
+					"SecurityIssues": []string{"Bucket policy grants public access to everyone (*)"},
+				},
+				Nodes: []graph.Node{
+					{
+						ID:       bucketName,
+						NodeType: "SecaaS-S3",
+					},
+				},
+			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   bucketName,
+				ResourceType: "SecaaS-S3",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "s3_bucket_policy_public_write_access",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"BucketName":     bucketName,
+					"StatusExtended": fmt.Sprintf("S3 bucket %s bucket policy does not grant unrestricted public access.", bucketName),
+					"Recommendation": "Remove public access policies from S3 bucket and restrict access to authorized principals only.",
+				},
+				Nodes: []graph.Node{
+					{
+						ID:       bucketName,
+						NodeType: "SecaaS-S3",
+					},
+				},
+			})
 		}
 
 		if !hasSecureTransportPolicy {
@@ -360,6 +399,26 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					"StatusExtended": fmt.Sprintf("S3 bucket %s does not enforce HTTPS/TLS encrypted transmission in bucket policy.", bucketName),
 					"Recommendation": "Add an explicit Deny statement for requests with aws:SecureTransport equal to false in the S3 bucket policy.",
 					"SecurityIssues": []string{"Missing aws:SecureTransport denial in bucket policy"},
+				},
+				Nodes: []graph.Node{
+					{
+						ID:       bucketName,
+						NodeType: "SecaaS-S3",
+					},
+				},
+			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   bucketName,
+				ResourceType: "SecaaS-S3",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "s3_bucket_secure_transport_policy",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"BucketName":     bucketName,
+					"StatusExtended": fmt.Sprintf("S3 bucket %s enforces HTTPS/TLS encrypted transmission in bucket policy.", bucketName),
+					"Recommendation": "Add an explicit Deny statement for requests with aws:SecureTransport equal to false in the S3 bucket policy.",
 				},
 				Nodes: []graph.Node{
 					{
@@ -424,7 +483,7 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		logOutput, err := s.client.GetBucketLogging(ctx, &s3.GetBucketLoggingInput{
 			Bucket: aws.String(bucketName),
 		})
-		if err == nil && logOutput.LoggingEnabled == nil {
+		if err != nil || logOutput == nil || logOutput.LoggingEnabled == nil {
 			results = append(results, scanner.ScanResult{
 				ResourceID:   bucketName,
 				ResourceType: "SecaaS-S3",
@@ -436,6 +495,26 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					"BucketName":     bucketName,
 					"StatusExtended": fmt.Sprintf("S3 bucket %s does not have server access logging enabled.", bucketName),
 					"SecurityIssues": []string{"S3 Server Access Logging is disabled (access requests not tracked)"},
+					"Recommendation": "Enable S3 Server Access Logging to an audit logging bucket.",
+				},
+				Nodes: []graph.Node{
+					{
+						ID:       bucketName,
+						NodeType: "SecaaS-S3",
+					},
+				},
+			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   bucketName,
+				ResourceType: "SecaaS-S3",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "s3_bucket_server_access_logging_enabled",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"BucketName":     bucketName,
+					"StatusExtended": fmt.Sprintf("S3 bucket %s has server access logging enabled.", bucketName),
 					"Recommendation": "Enable S3 Server Access Logging to an audit logging bucket.",
 				},
 				Nodes: []graph.Node{
@@ -586,8 +665,8 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			!aws.ToBool(acctPab.PublicAccessBlockConfiguration.RestrictPublicBuckets) {
 			isAccountPabDisabled = true
 		}
+		resID := fmt.Sprintf("s3-account-pab-%s", s.accountID)
 		if isAccountPabDisabled {
-			resID := fmt.Sprintf("s3-account-pab-%s", s.accountID)
 			results = append(results, scanner.ScanResult{
 				ResourceID:   resID,
 				ResourceType: "SecaaS-S3-Account",
@@ -608,10 +687,135 @@ func (s *S3Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					},
 				},
 			})
+		} else {
+			results = append(results, scanner.ScanResult{
+				ResourceID:   resID,
+				ResourceType: "SecaaS-S3-Account",
+				Region:       "global",
+				Status:       "PASS",
+				RuleID:       "s3_account_level_public_access_blocks",
+				Severity:     "INFO",
+				Metrics: map[string]interface{}{
+					"AccountId":      s.accountID,
+					"StatusExtended": fmt.Sprintf("S3 account-level Block Public Access is enabled for AWS account %s.", s.accountID),
+					"Recommendation": "Enable all four S3 Block Public Access settings at the account level via S3Control.",
+				},
+				Nodes: []graph.Node{
+					{
+						ID:       resID,
+						NodeType: "SecaaS-S3-Account",
+					},
+				},
+			})
 		}
 	}
 
 	return results, nil
+}
+
+var restrictiveS3ConditionKeys = map[string]bool{
+	"aws:principalorgid":   true,
+	"aws:sourcevpce":       true,
+	"aws:sourcevpc":        true,
+	"aws:sourceip":         true,
+	"aws:principalaccount": true,
+	"aws:principalarn":     true,
+	"aws:sourcearn":        true,
+	"aws:sourceaccount":    true,
+	"aws:sourceowner":      true,
+}
+
+func isConditionRestrictive(cond map[string]interface{}) bool {
+	if len(cond) == 0 {
+		return false
+	}
+	for op, inner := range cond {
+		opLower := strings.ToLower(op)
+		// Negated operators like StringNotEquals or NotIpAddress do not restrict "*" satisfactorily on their own
+		if strings.Contains(opLower, "not") || opLower == "null" || opLower == "bool" {
+			continue
+		}
+		innerMap, ok := inner.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for k, v := range innerMap {
+			if restrictiveS3ConditionKeys[strings.ToLower(k)] && v != nil && v != "" && v != "*" && v != "0.0.0.0/0" && v != "::/0" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isPolicyPublic(policyStr string) bool {
+	pub, _ := evaluateBucketPolicy(policyStr)
+	return pub
+}
+
+func evaluateBucketPolicy(policyStr string) (hasPublicPolicy bool, hasSecureTransportPolicy bool) {
+	var rawDoc map[string]interface{}
+	if json.Unmarshal([]byte(policyStr), &rawDoc) != nil {
+		return false, false
+	}
+	var stmts []interface{}
+	switch v := rawDoc["Statement"].(type) {
+	case []interface{}:
+		stmts = v
+	case map[string]interface{}:
+		stmts = []interface{}{v}
+	}
+
+	for _, stmtItem := range stmts {
+		stmt, ok := stmtItem.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		effect, _ := stmt["Effect"].(string)
+		if strings.EqualFold(effect, "Allow") {
+			isPublicPrincipal := false
+			switch p := stmt["Principal"].(type) {
+			case string:
+				if p == "*" {
+					isPublicPrincipal = true
+				}
+			case map[string]interface{}:
+				if awsVal, ok := p["AWS"]; ok {
+					switch av := awsVal.(type) {
+					case string:
+						if av == "*" {
+							isPublicPrincipal = true
+						}
+					case []interface{}:
+						for _, item := range av {
+							if itemStr, ok := item.(string); ok && itemStr == "*" {
+								isPublicPrincipal = true
+								break
+							}
+						}
+					}
+				}
+			}
+			if isPublicPrincipal {
+				cond, _ := stmt["Condition"].(map[string]interface{})
+				if !isConditionRestrictive(cond) {
+					hasPublicPolicy = true
+				}
+			}
+		}
+		if strings.EqualFold(effect, "Deny") {
+			if cond, ok := stmt["Condition"].(map[string]interface{}); ok {
+				if boolCond, ok := cond["Bool"].(map[string]interface{}); ok {
+					if secVal, ok := boolCond["aws:SecureTransport"]; ok {
+						if secVal == "false" || secVal == false {
+							hasSecureTransportPolicy = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return hasPublicPolicy, hasSecureTransportPolicy
 }
 
 // Meta returns rich scanner metadata for execution planning and pre-filtering.

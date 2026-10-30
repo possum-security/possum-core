@@ -340,6 +340,61 @@ func TestVPCScanner_Scan(t *testing.T) {
 			},
 			expectVulnerable: false,
 		},
+		{
+			name: "IPv6 ::/0 Unrestricted SSH in Security Group",
+			mockAPI: &mockVpcApi{
+				describeSecurityGroupsOutput: &ec2.DescribeSecurityGroupsOutput{
+					SecurityGroups: []types.SecurityGroup{
+						{
+							GroupId:   aws.String("sg-ipv6-ssh"),
+							GroupName: aws.String("ssh-ipv6-open"),
+							IpPermissions: []types.IpPermission{
+								{
+									IpProtocol: aws.String("tcp"),
+									FromPort:   aws.Int32(22),
+									ToPort:     aws.Int32(22),
+									Ipv6Ranges: []types.Ipv6Range{
+										{CidrIpv6: aws.String("::/0")},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRuleID:   "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22",
+			expectedSeverity: "HIGH",
+			expectVulnerable: true,
+		},
+		{
+			name: "IPv6 ::/0 NACL Open Ingress Port 22",
+			mockAPI: &mockVpcApi{
+				describeSecurityGroupsOutput: &ec2.DescribeSecurityGroupsOutput{},
+				describeNetworkAclsOutput: &ec2.DescribeNetworkAclsOutput{
+					NetworkAcls: []types.NetworkAcl{
+						{
+							NetworkAclId: aws.String("acl-ipv6"),
+							Entries: []types.NetworkAclEntry{
+								{
+									RuleNumber:    aws.Int32(100),
+									RuleAction:    types.RuleActionAllow,
+									Egress:        aws.Bool(false),
+									Ipv6CidrBlock: aws.String("::/0"),
+									Protocol:      aws.String("6"),
+									PortRange: &types.PortRange{
+										From: aws.Int32(22),
+										To:   aws.Int32(22),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRuleID:   "ec2_networkacl_allow_ingress_tcp_port_22",
+			expectedSeverity: "HIGH",
+			expectVulnerable: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -351,15 +406,20 @@ func TestVPCScanner_Scan(t *testing.T) {
 			}
 
 			if !tt.expectVulnerable {
-				if len(results) > 0 {
-					t.Errorf("expected 0 results, got %d: %+v", len(results), results)
+				if len(results) == 0 {
+					t.Errorf("expected PASS results for compliant resources, got 0")
+				}
+				for _, r := range results {
+					if r.Status != "PASS" {
+						t.Errorf("expected only PASS results, got %+v", r)
+					}
 				}
 				return
 			}
 
 			var matchedResult *scanner.ScanResult
 			for _, r := range results {
-				if r.RuleID == tt.expectedRuleID && r.Severity == tt.expectedSeverity {
+				if r.RuleID == tt.expectedRuleID && r.Severity == tt.expectedSeverity && r.Status == "FAIL" {
 					res := r
 					matchedResult = &res
 					break

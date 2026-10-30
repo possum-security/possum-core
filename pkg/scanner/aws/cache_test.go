@@ -2,6 +2,7 @@ package aws
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/url"
@@ -29,6 +30,7 @@ func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func TestAWSCacheTransport_HitAndMiss(t *testing.T) {
+	GetSharedAWSCache().Clear()
 	mockRT := &mockRoundTripper{}
 	transport := NewAWSCacheTransport(mockRT, "acc-123")
 
@@ -71,6 +73,7 @@ func TestAWSCacheTransport_HitAndMiss(t *testing.T) {
 }
 
 func TestAWSCacheTransport_SingleflightConcurrentDeduplication(t *testing.T) {
+	GetSharedAWSCache().Clear()
 	mockRT := &mockRoundTripper{
 		handler: func(req *http.Request) (*http.Response, error) {
 			// Simulate 50ms AWS API latency
@@ -122,6 +125,7 @@ func TestAWSCacheTransport_SingleflightConcurrentDeduplication(t *testing.T) {
 }
 
 func TestAWSCacheTransport_AccountIsolation(t *testing.T) {
+	GetSharedAWSCache().Clear()
 	mockRT := &mockRoundTripper{}
 	cache := &AWSCache{entries: make(map[string]*cachedResponse)}
 
@@ -149,6 +153,7 @@ func TestAWSCacheTransport_AccountIsolation(t *testing.T) {
 }
 
 func TestAWSCacheTransport_InvalidateAccount(t *testing.T) {
+	GetSharedAWSCache().Clear()
 	mockRT := &mockRoundTripper{}
 	cache := &AWSCache{entries: make(map[string]*cachedResponse)}
 	transport := cache.ForAccount("acc-to-invalidate", mockRT)
@@ -174,3 +179,189 @@ func TestAWSCacheTransport_InvalidateAccount(t *testing.T) {
 		t.Errorf("expected 2 calls after account invalidation, got %d", count)
 	}
 }
+
+func TestAWSCacheTransport_XAmzTargetIsolation(t *testing.T) {
+	GetSharedAWSCache().Clear()
+	mockRT := &mockRoundTripper{
+		handler: func(req *http.Request) (*http.Response, error) {
+			target := req.Header.Get("X-Amz-Target")
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/x-amz-json-1.1"}},
+				Body:       io.NopCloser(bytes.NewBufferString(`{"target":"` + target + `"}`)),
+			}, nil
+		},
+	}
+
+	cache := &AWSCache{entries: make(map[string]*cachedResponse)}
+	transport := cache.ForAccount("acc-json-target", mockRT)
+
+	reqURL, _ := url.Parse("https://kms.us-east-1.amazonaws.com/")
+
+	req1 := &http.Request{
+		Method: http.MethodPost,
+		URL:    reqURL,
+		Header: http.Header{"X-Amz-Target": []string{"TrentService.ListKeys"}},
+		Body:   io.NopCloser(bytes.NewBufferString(`{}`)),
+	}
+	resp1, err := transport.RoundTrip(req1)
+	if err != nil {
+		t.Fatalf("first request failed: %v", err)
+	}
+	body1, _ := io.ReadAll(resp1.Body)
+	resp1.Body.Close()
+	if string(body1) != `{"target":"TrentService.ListKeys"}` {
+		t.Fatalf("unexpected body1: %s", string(body1))
+	}
+
+	// Second request to same URL and body `{}` with different X-Amz-Target must NOT hit cache
+	req2 := &http.Request{
+		Method: http.MethodPost,
+		URL:    reqURL,
+		Header: http.Header{"X-Amz-Target": []string{"TrentService.ListAliases"}},
+		Body:   io.NopCloser(bytes.NewBufferString(`{}`)),
+	}
+	resp2, err := transport.RoundTrip(req2)
+	if err != nil {
+		t.Fatalf("second request failed: %v", err)
+	}
+	body2, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	if string(body2) != `{"target":"TrentService.ListAliases"}` {
+		t.Fatalf("expected different response for different X-Amz-Target, got %s", string(body2))
+	}
+	if count := mockRT.callCount.Load(); count != 2 {
+		t.Errorf("expected 2 backend calls for different X-Amz-Target headers, got %d", count)
+	}
+}
+
+func TestAWSCacheTransport_DoesNotCacheSecretsOrS3Objects(t *testing.T) {
+	GetSharedAWSCache().Clear()
+	mockRT := &mockRoundTripper{}
+	cache := &AWSCache{entries: make(map[string]*cachedResponse)}
+	transport := cache.ForAccount("acc-sensitive", mockRT)
+
+	// 1. SecretsManager GetSecretValue must not be cached
+	smURL, _ := url.Parse("https://secretsmanager.us-east-1.amazonaws.com/")
+	for i := 0; i < 2; i++ {
+		req := &http.Request{
+			Method: http.MethodPost,
+			URL:    smURL,
+			Header: http.Header{"X-Amz-Target": []string{"secretsmanager.GetSecretValue"}},
+			Body:   io.NopCloser(bytes.NewBufferString(`{"SecretId":"my-secret"}`)),
+		}
+		resp, err := transport.RoundTrip(req)
+		if err != nil {
+			t.Fatalf("secretsmanager call failed: %v", err)
+		}
+		resp.Body.Close()
+	}
+	if count := mockRT.callCount.Load(); count != 2 {
+		t.Errorf("expected GetSecretValue not to be cached (2 calls), got %d", count)
+	}
+
+	// 2. S3 GetObject must not be cached
+	s3ObjURL, _ := url.Parse("https://my-bucket.s3.us-east-1.amazonaws.com/private/key.json?x-id=GetObject")
+	for i := 0; i < 2; i++ {
+		req := &http.Request{
+			Method: http.MethodGet,
+			URL:    s3ObjURL,
+			Header: http.Header{},
+		}
+		resp, err := transport.RoundTrip(req)
+		if err != nil {
+			t.Fatalf("s3 GetObject call failed: %v", err)
+		}
+		resp.Body.Close()
+	}
+	if count := mockRT.callCount.Load(); count != 4 {
+		t.Errorf("expected S3 GetObject not to be cached (4 total calls), got %d", count)
+	}
+}
+
+func TestAWSCacheTransport_EvictExpired(t *testing.T) {
+	GetSharedAWSCache().Clear()
+	cache := &AWSCache{entries: make(map[string]*cachedResponse)}
+	cache.entries["expired-key"] = &cachedResponse{
+		statusCode: http.StatusOK,
+		body:       []byte(`{}`),
+		expiresAt:  time.Now().Add(-1 * time.Minute),
+	}
+	cache.entries["active-key"] = &cachedResponse{
+		statusCode: http.StatusOK,
+		body:       []byte(`{}`),
+		expiresAt:  time.Now().Add(5 * time.Minute),
+	}
+
+	cache.EvictExpired()
+
+	cache.mu.RLock()
+	_, expiredExists := cache.entries["expired-key"]
+	_, activeExists := cache.entries["active-key"]
+	cache.mu.RUnlock()
+
+	if expiredExists {
+		t.Errorf("expected expired-key to be evicted")
+	}
+	if !activeExists {
+		t.Errorf("expected active-key to remain")
+	}
+}
+
+func TestAWSCacheTransport_SingleflightCallerCancellationIsolation(t *testing.T) {
+	GetSharedAWSCache().Clear()
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+
+	mockRT := &mockRoundTripper{
+		handler: func(req *http.Request) (*http.Response, error) {
+			close(started)
+			<-proceed
+			if err := req.Context().Err(); err != nil {
+				return nil, err
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(bytes.NewBufferString(`{"status":"ok"}`)),
+			}, nil
+		},
+	}
+
+	cache := &AWSCache{entries: make(map[string]*cachedResponse)}
+	transport := cache.ForAccount("acc-cancel", mockRT)
+	reqURL, _ := url.Parse("https://ec2.us-east-1.amazonaws.com/?Action=DescribeSubnets")
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	var err2 error
+	go func() {
+		defer wg.Done()
+		req1 := (&http.Request{Method: http.MethodGet, URL: reqURL, Header: http.Header{}}).WithContext(ctx1)
+		_, _ = transport.RoundTrip(req1)
+	}()
+
+	<-started
+
+	go func() {
+		defer wg.Done()
+		req2 := (&http.Request{Method: http.MethodGet, URL: reqURL, Header: http.Header{}}).WithContext(context.Background())
+		resp2, err := transport.RoundTrip(req2)
+		err2 = err
+		if resp2 != nil {
+			resp2.Body.Close()
+		}
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	cancel1()
+	close(proceed)
+	wg.Wait()
+
+	if err2 != nil {
+		t.Fatalf("expected second caller to succeed despite first caller cancelling context, got: %v", err2)
+	}
+}
+

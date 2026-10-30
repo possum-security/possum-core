@@ -3,6 +3,7 @@ package finops
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/possum-security/possum-core/pkg/model"
 	"github.com/possum-security/possum-core/pkg/scanner"
@@ -13,10 +14,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 )
 
+// ECSServiceAPI defines the ECS API subset needed by ECSScanner.
+type ECSServiceAPI interface {
+	ecs.ListClustersAPIClient
+	ecs.ListServicesAPIClient
+	DescribeServices(ctx context.Context, params *ecs.DescribeServicesInput, optFns ...func(*ecs.Options)) (*ecs.DescribeServicesOutput, error)
+}
+
 // ECSScanner scans ECS clusters and services to detect over-utilized, under-utilized, and dormant services.
 type ECSScanner struct {
-	ecsClient *ecs.Client
-	cwClient  *cloudwatch.Client
+	ecsClient ECSServiceAPI
+	cwClient  CloudWatchMetricAPI
+	region    string
 }
 
 // Ensure ECSScanner satisfies MetaScanner at compile time.
@@ -26,7 +35,27 @@ func NewECSScanner(cfg aws.Config) *ECSScanner {
 	return &ECSScanner{
 		ecsClient: ecs.NewFromConfig(cfg),
 		cwClient:  cloudwatch.NewFromConfig(cfg),
+		region:    cfg.Region,
 	}
+}
+
+func NewECSScannerWithClients(ecsClient ECSServiceAPI, cwClient CloudWatchMetricAPI, region ...string) *ECSScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &ECSScanner{
+		ecsClient: ecsClient,
+		cwClient:  cwClient,
+		region:    r,
+	}
+}
+
+func extractECSClusterName(clusterArnOrName string) string {
+	if idx := strings.LastIndex(clusterArnOrName, "/"); idx != -1 && idx+1 < len(clusterArnOrName) {
+		return clusterArnOrName[idx+1:]
+	}
+	return clusterArnOrName
 }
 
 func (s *ECSScanner) Name() string {
@@ -102,6 +131,10 @@ func (s *ECSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					svcName := aws.ToString(svc.ServiceName)
 					svcArn := aws.ToString(svc.ServiceArn)
 					clusterName := aws.ToString(svc.ClusterArn)
+					if clusterName == "" {
+						clusterName = clusterArn
+					}
+					clusterShortName := extractECSClusterName(clusterName)
 					runningCount := svc.RunningCount
 					desiredCount := svc.DesiredCount
 					launchType := string(svc.LaunchType)
@@ -127,23 +160,41 @@ func (s *ECSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					isOrphaned := false
 					var recommendation string
 
-					// Fetch CloudWatch CPU and Memory metrics
-					maxCPU, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/ECS", "CPUUtilization", "ServiceName", svcName, cwtypes.StatisticMaximum)
-					maxMem, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/ECS", "MemoryUtilization", "ServiceName", svcName, cwtypes.StatisticMaximum)
-					metrics["MaxCPU_30Days"] = maxCPU
-					metrics["MaxMemory_30Days"] = maxMem
+					ecsDimensions := []cwtypes.Dimension{
+						{
+							Name:  aws.String("ClusterName"),
+							Value: aws.String(clusterShortName),
+						},
+						{
+							Name:  aws.String("ServiceName"),
+							Value: aws.String(svcName),
+						},
+					}
 
-					if runningCount == 0 && desiredCount == 0 {
-						isOrphaned = true
-						metrics["IssueType"] = "Dormant Service (0 Desired Tasks)"
-						recommendation = "Decommission inactive ECS service to reduce configuration overhead."
-					} else if maxCPU >= 75.0 || maxMem >= 75.0 {
-						metrics["IssueType"] = "Scale Up (High Utilization)"
-						recommendation = fmt.Sprintf("Scale Up ECS Service — High utilization detected (Max CPU: %.1f%%, Max Memory: %.1f%%).", maxCPU, maxMem)
-					} else if runningCount > 0 && maxCPU < 10.0 && maxMem < 20.0 {
-						isOrphaned = true
-						metrics["IssueType"] = "Over-Provisioned Service"
-						recommendation = fmt.Sprintf("Downsize ECS Service — Low resource utilization (Max CPU: %.1f%%, Max Memory: %.1f%%).", maxCPU, maxMem)
+					// Fetch CloudWatch CPU and Memory metrics
+					maxCPU, cpuErr := FetchCloudWatchMetricWithDimensions(ctx, s.cwClient, "AWS/ECS", "CPUUtilization", ecsDimensions, cwtypes.StatisticMaximum)
+					maxMem, memErr := FetchCloudWatchMetricWithDimensions(ctx, s.cwClient, "AWS/ECS", "MemoryUtilization", ecsDimensions, cwtypes.StatisticMaximum)
+
+					if metricErr := firstErr(cpuErr, memErr); metricErr != nil {
+						metrics["MetricFetchError"] = metricErr.Error()
+					} else {
+						metrics["MaxCPU_30Days"] = maxCPU
+						metrics["MaxMemory_30Days"] = maxMem
+
+						if !isResourceTooYoung(svc.CreatedAt) {
+							if runningCount == 0 && desiredCount == 0 {
+								isOrphaned = true
+								metrics["IssueType"] = "Dormant Service (0 Desired Tasks)"
+								recommendation = "Decommission inactive ECS service to reduce configuration overhead."
+							} else if maxCPU >= 75.0 || maxMem >= 75.0 {
+								metrics["IssueType"] = "Scale Up (High Utilization)"
+								recommendation = fmt.Sprintf("Scale Up ECS Service — High utilization detected (Max CPU: %.1f%%, Max Memory: %.1f%%).", maxCPU, maxMem)
+							} else if runningCount > 0 && maxCPU < 10.0 && maxMem < 20.0 {
+								isOrphaned = true
+								metrics["IssueType"] = "Over-Provisioned Service"
+								recommendation = fmt.Sprintf("Downsize ECS Service — Low resource utilization (Max CPU: %.1f%%, Max Memory: %.1f%%).", maxCPU, maxMem)
+							}
+						}
 					}
 
 					if recommendation != "" {
@@ -163,7 +214,7 @@ func (s *ECSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					results = append(results, BuildFinOpsResult(FinOpsResultParams{
 						ResourceID:   resID,
 						ResourceType: "ECS",
-						Region:       "regional",
+						Region:       resolveRegion(s.region, "regional"),
 						RuleID:       RuleECSServiceIdle,
 						DisplayName:  svcName,
 						IsOrphaned:   isOrphaned,

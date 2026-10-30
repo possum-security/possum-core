@@ -3,8 +3,11 @@ package aws
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
@@ -74,19 +77,70 @@ func DiscoverOrganizationAccountsWithClient(ctx context.Context, client Organiza
 	return accounts, nil
 }
 
+// ResolveCrossAccountRoleARN builds an IAM Role ARN targeting accountID.
+// If roleNameOrARN is already an IAM Role ARN (e.g. from --role-arn), the role name/path
+// and partition are extracted so that each target member account gets its own role ARN.
+func ResolveCrossAccountRoleARN(accountID, roleNameOrARN string) string {
+	roleNameOrARN = strings.TrimSpace(roleNameOrARN)
+	if roleNameOrARN == "" {
+		roleNameOrARN = "OrganizationAccountAccessRole"
+	}
+
+	partition := "aws"
+	extractedRoleName := roleNameOrARN
+
+	if strings.HasPrefix(roleNameOrARN, "arn:") {
+		parts := strings.SplitN(roleNameOrARN, ":", 6)
+		if len(parts) >= 2 && parts[1] != "" {
+			partition = parts[1]
+		}
+		if idx := strings.Index(roleNameOrARN, ":role/"); idx != -1 {
+			extractedRoleName = strings.TrimPrefix(roleNameOrARN[idx+len(":role/"):], "/")
+		} else if len(parts) == 6 {
+			extractedRoleName = strings.TrimPrefix(parts[5], "role/")
+			extractedRoleName = strings.TrimPrefix(extractedRoleName, "/")
+		}
+	} else if idx := strings.Index(roleNameOrARN, ":role/"); idx != -1 {
+		extractedRoleName = strings.TrimPrefix(roleNameOrARN[idx+len(":role/"):], "/")
+	} else {
+		extractedRoleName = strings.TrimPrefix(roleNameOrARN, "/")
+	}
+
+	if extractedRoleName == "" {
+		extractedRoleName = "OrganizationAccountAccessRole"
+	}
+
+	return fmt.Sprintf("arn:%s:iam::%s:role/%s", partition, accountID, extractedRoleName)
+}
+
+func unwrapRootTransport(client aws.HTTPClient) http.RoundTripper {
+	httpClient, ok := client.(*http.Client)
+	if !ok || httpClient == nil || httpClient.Transport == nil {
+		return http.DefaultTransport
+	}
+	rt := httpClient.Transport
+	for {
+		switch t := rt.(type) {
+		case *ThrottledTransport:
+			rt = t.Base()
+		case *AWSCacheTransport:
+			rt = t.Base()
+		default:
+			if rt == nil {
+				return http.DefaultTransport
+			}
+			return rt
+		}
+	}
+}
+
 // CreateCrossAccountConfig returns a new aws.Config configured to assume the target role in accountID.
-func CreateCrossAccountConfig(ctx context.Context, baseCfg aws.Config, accountID, roleName, externalID string) (aws.Config, error) {
+func CreateCrossAccountConfig(ctx context.Context, baseCfg aws.Config, accountID, roleNameOrARN, externalID string) (aws.Config, error) {
 	if accountID == "" {
 		return baseCfg, fmt.Errorf("accountID cannot be empty")
 	}
-	if roleName == "" {
-		roleName = "OrganizationAccountAccessRole"
-	}
 
-	roleARN := roleName
-	if !strings.HasPrefix(roleName, "arn:aws:iam::") {
-		roleARN = fmt.Sprintf("arn:aws:iam::%s:role/%s", accountID, roleName)
-	}
+	roleARN := ResolveCrossAccountRoleARN(accountID, roleNameOrARN)
 
 	stsClient := sts.NewFromConfig(baseCfg)
 	provider := stscreds.NewAssumeRoleProvider(stsClient, roleARN, func(o *stscreds.AssumeRoleOptions) {
@@ -98,5 +152,17 @@ func CreateCrossAccountConfig(ctx context.Context, baseCfg aws.Config, accountID
 
 	cfgCopy := baseCfg.Copy()
 	cfgCopy.Credentials = aws.NewCredentialsCache(provider)
+
+	rootTransport := unwrapRootTransport(baseCfg.HTTPClient)
+	baseTransport := rootTransport
+	if os.Getenv("AWS_DISABLE_CACHE") != "true" {
+		baseTransport = GetSharedAWSCache().ForAccount(accountID, rootTransport)
+	}
+	throttledTransport := NewThrottledTransport(baseTransport, accountID, GetSharedAPITelemetry())
+	cfgCopy.HTTPClient = &http.Client{
+		Transport: throttledTransport,
+		Timeout:   45 * time.Second,
+	}
+
 	return cfgCopy, nil
 }

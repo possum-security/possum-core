@@ -16,6 +16,7 @@ import (
 // CloudFormationScanner detects orphaned, failed, and abandoned CloudFormation stacks.
 type CloudFormationScanner struct {
 	client *cloudformation.Client
+	region string
 }
 
 // Ensure CloudFormationScanner satisfies MetaScanner at compile time.
@@ -24,6 +25,7 @@ var _ scanner.MetaScanner = (*CloudFormationScanner)(nil)
 func NewCloudFormationScanner(cfg aws.Config) *CloudFormationScanner {
 	return &CloudFormationScanner{
 		client: cloudformation.NewFromConfig(cfg),
+		region: cfg.Region,
 	}
 }
 
@@ -148,7 +150,7 @@ func (s *CloudFormationScanner) Scan(ctx context.Context) ([]scanner.ScanResult,
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   resID,
 				ResourceType: "CloudFormation",
-				Region:       "regional",
+				Region:       resolveRegion(s.region, "regional"),
 				RuleID:       RuleCloudFormationStackFailedOrAbandoned,
 				DisplayName:  stackName,
 				IsOrphaned:   isOrphaned,

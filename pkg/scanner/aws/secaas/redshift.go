@@ -247,6 +247,6 @@ func (s *RedshiftScanner) Meta() scanner.ScannerMeta {
 		Scope:         graph.ScopeRegional,
 		ExecutionCost: scanner.CostMedium,
 		Service:       "redshift",
-		CheckIDs:      []string{"redshift_cluster_encrypted_at_rest"},
+		CheckIDs:      []string{"redshift_cluster_audit_logging", "redshift_cluster_encrypted_at_rest", "redshift_cluster_public_access"},
 	}
 }

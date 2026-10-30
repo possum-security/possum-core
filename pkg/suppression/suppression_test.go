@@ -106,3 +106,78 @@ func TestSuppression_MatchingAndExpiry(t *testing.T) {
 	// Third finding has no suppression -> Remains FAIL
 	assert.Equal(t, model.StatusFail, filtered[2].Status)
 }
+
+func TestSuppression_NoSubstringFallbackAndARNSuffixMatching(t *testing.T) {
+	// "prod" must NOT match resources merely containing "prod" as a substring
+	prodSupp := Suppression{
+		RuleID:     "s3_bucket_level_public_access_block",
+		ResourceID: "prod",
+		Reason:     "Should only match exact 'prod'",
+	}
+	assert.False(t, prodSupp.Matches(model.ScanResult{
+		RuleID:     "s3_bucket_level_public_access_block",
+		ResourceID: "arn:aws:s3:::my-prod-bucket",
+		Metrics:    map[string]interface{}{"DisplayName": "my-prod-bucket"},
+	}))
+	assert.False(t, prodSupp.Matches(model.ScanResult{
+		RuleID:     "s3_bucket_level_public_access_block",
+		ResourceID: "prod-logs-bucket",
+	}))
+	assert.True(t, prodSupp.Matches(model.ScanResult{
+		RuleID:     "s3_bucket_level_public_access_block",
+		ResourceID: "arn:aws:s3:::prod",
+	}))
+
+	// ARN suffix matching after ':' or '/'
+	ec2Result := model.ScanResult{
+		RuleID:     "ec2_instance_public_ip",
+		ResourceID: "arn:aws:ec2:us-east-1:123456789012:instance/i-123",
+	}
+	assert.True(t, (Suppression{RuleID: "ec2_instance_public_ip", ResourceID: "i-123", Reason: "ok"}).Matches(ec2Result))
+	assert.True(t, (Suppression{RuleID: "ec2_instance_public_ip", ResourceID: "instance/i-123", Reason: "ok"}).Matches(ec2Result))
+	assert.False(t, (Suppression{RuleID: "ec2_instance_public_ip", ResourceID: "i-12", Reason: "ok"}).Matches(ec2Result))
+
+	// DisplayName exact match
+	dnResult := model.ScanResult{
+		RuleID:     "rds_public",
+		ResourceID: "arn:aws:rds:us-east-1:123456789012:db:mydb-instance-1",
+		Metrics:    map[string]interface{}{"DisplayName": "mydb-display"},
+	}
+	assert.True(t, (Suppression{RuleID: "rds_public", ResourceID: "mydb-display", Reason: "ok"}).Matches(dnResult))
+}
+
+func TestSuppression_InvalidExpiresAtAndEmptyReason(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	// Unparseable expires_at must be treated as expired
+	badExpirySupp := Suppression{
+		RuleID:     "s3_bucket_level_public_access_block",
+		ResourceID: "*",
+		Reason:     "Testing bad expiry",
+		ExpiresAt:  "not-a-valid-date",
+	}
+	assert.True(t, badExpirySupp.IsExpired(now))
+
+	loader := NewLoader()
+
+	// Malformed expires_at in Load returns error
+	_, err := loader.Load(strings.NewReader(`
+suppressions:
+  - rule_id: s3_bucket_level_public_access_block
+    resource_id: "my-bucket"
+    reason: "Valid reason"
+    expires_at: "2026-99-99"
+`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expires_at")
+
+	// Empty reason in Load returns error
+	_, err = loader.Load(strings.NewReader(`
+suppressions:
+  - rule_id: s3_bucket_level_public_access_block
+    resource_id: "my-bucket"
+`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reason")
+}
+

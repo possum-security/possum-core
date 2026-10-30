@@ -99,26 +99,50 @@ func (e *Engine) ExecuteWithReport(ctx context.Context, scanners []Scanner, filt
 			select {
 			case semaphore <- struct{}{}:
 			case <-execCtx.Done():
+				timeoutErr := fmt.Errorf("scanner %s did not complete before timeout: %w", sc.Name(), execCtx.Err())
+				mu.Lock()
+				scanErrors = append(scanErrors, timeoutErr)
+				mu.Unlock()
+				if e.config.OnProgress != nil {
+					e.config.OnProgress(sc, 0, timeoutErr)
+				}
 				return
 			}
 			defer func() { <-semaphore }()
 
-			results, err := sc.Scan(execCtx)
+			if execCtx.Err() != nil {
+				timeoutErr := fmt.Errorf("scanner %s did not complete before timeout: %w", sc.Name(), execCtx.Err())
+				mu.Lock()
+				scanErrors = append(scanErrors, timeoutErr)
+				mu.Unlock()
+				if e.config.OnProgress != nil {
+					e.config.OnProgress(sc, 0, timeoutErr)
+				}
+				return
+			}
+
+			var results []model.ScanResult
+			var err error
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						err = fmt.Errorf("scanner %s panicked: %v", sc.Name(), r)
+					}
+				}()
+				results, err = sc.Scan(execCtx)
+			}()
 
 			mu.Lock()
+			if len(results) > 0 {
+				allResults = append(allResults, results...)
+			}
 			if err != nil {
 				scanErrors = append(scanErrors, fmt.Errorf("%s: %w", sc.Name(), err))
-			} else {
-				allResults = append(allResults, results...)
 			}
 			mu.Unlock()
 
 			if e.config.OnProgress != nil {
-				count := 0
-				if err == nil {
-					count = len(results)
-				}
-				e.config.OnProgress(sc, count, err)
+				e.config.OnProgress(sc, len(results), err)
 			}
 		}(s)
 	}

@@ -11,9 +11,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
+// DynamoDBTableAPI defines the DynamoDB API subset needed by DynamoDBScanner.
+type DynamoDBTableAPI interface {
+	dynamodb.ListTablesAPIClient
+	DescribeTable(ctx context.Context, params *dynamodb.DescribeTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error)
+}
+
 type DynamoDBScanner struct {
-	ddbClient *dynamodb.Client
-	cwClient  *cloudwatch.Client
+	ddbClient DynamoDBTableAPI
+	cwClient  CloudWatchMetricAPI
+	region    string
 }
 
 // Ensure DynamoDBScanner satisfies MetaScanner at compile time.
@@ -23,6 +30,19 @@ func NewDynamoDBScanner(cfg aws.Config) *DynamoDBScanner {
 	return &DynamoDBScanner{
 		ddbClient: dynamodb.NewFromConfig(cfg),
 		cwClient:  cloudwatch.NewFromConfig(cfg),
+		region:    cfg.Region,
+	}
+}
+
+func NewDynamoDBScannerWithClients(ddbClient DynamoDBTableAPI, cwClient CloudWatchMetricAPI, region ...string) *DynamoDBScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &DynamoDBScanner{
+		ddbClient: ddbClient,
+		cwClient:  cwClient,
+		region:    r,
 	}
 }
 
@@ -87,7 +107,7 @@ func (s *DynamoDBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error
 				metrics["ProvisionedRCU"] = rcu
 				metrics["ProvisionedWCU"] = wcu
 
-				if rcu > 10 || wcu > 10 {
+				if !isResourceTooYoung(desc.Table.CreationDateTime) && (rcu > 10 || wcu > 10) {
 					isOrphaned = true
 					metrics["Recommendation"] = "Consider switching to On-Demand capacity for unpredictable workloads"
 				}
@@ -109,7 +129,7 @@ func (s *DynamoDBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   resID,
 				ResourceType: "DynamoDB",
-				Region:       "regional",
+				Region:       resolveRegion(s.region, "regional"),
 				RuleID:       RuleDynamoDBProvisionedCapacityUnused,
 				DisplayName:  tableName,
 				IsOrphaned:   isOrphaned,

@@ -3,12 +3,23 @@ package scanner
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/possum-security/possum-core/pkg/model"
 )
+
+type panicScanner struct {
+	name string
+	msg  string
+}
+
+func (p *panicScanner) Name() string { return p.name }
+func (p *panicScanner) Scan(ctx context.Context) ([]model.ScanResult, error) {
+	panic(p.msg)
+}
 
 type mockScanner struct {
 	name    string
@@ -183,3 +194,98 @@ func TestEngineExecuteWithReport_And_Enrichment(t *testing.T) {
 		t.Errorf("expected 1 last error, got %d", len(lastErrs))
 	}
 }
+
+func TestEnginePanicRecovery(t *testing.T) {
+	pSc := &panicScanner{name: "bad-scanner", msg: "nil pointer dereference"}
+	okSc := &mockScanner{
+		name: "good-scanner",
+		results: []model.ScanResult{
+			{ResourceID: "r1", RuleID: "s3_bucket_level_public_access_block", Severity: model.SeverityHigh, Status: model.StatusFail},
+		},
+	}
+
+	engine := NewEngine(EngineConfig{MaxWorkers: 2})
+	rep, err := engine.ExecuteWithReport(context.Background(), []Scanner{pSc, okSc})
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+
+	if len(rep.Results) != 1 {
+		t.Fatalf("expected 1 result from good-scanner, got %d", len(rep.Results))
+	}
+	if len(rep.Errors) != 1 {
+		t.Fatalf("expected 1 error from panicking scanner, got %d", len(rep.Errors))
+	}
+	if !strings.Contains(rep.Errors[0].Error(), "scanner bad-scanner panicked: nil pointer dereference") {
+		t.Errorf("expected panic error message, got: %v", rep.Errors[0])
+	}
+}
+
+func TestEnginePartialResultsPreservedOnError(t *testing.T) {
+	partialSc := &mockScanner{
+		name: "partial-scanner",
+		results: []model.ScanResult{
+			{ResourceID: "bucket-1", RuleID: "s3_bucket_level_public_access_block", Severity: model.SeverityHigh, Status: model.StatusFail},
+		},
+		err: errors.New("throttled in us-west-2"),
+	}
+
+	engine := NewEngine()
+	rep, err := engine.ExecuteWithReport(context.Background(), []Scanner{partialSc})
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+
+	if len(rep.Results) != 1 {
+		t.Fatalf("expected 1 partial result preserved, got %d", len(rep.Results))
+	}
+	if rep.Results[0].Title == "" {
+		t.Errorf("expected partial result to be enriched with catalog title")
+	}
+	if len(rep.Errors) != 1 {
+		t.Fatalf("expected 1 error recorded, got %d", len(rep.Errors))
+	}
+	if !strings.Contains(rep.Errors[0].Error(), "throttled in us-west-2") {
+		t.Errorf("unexpected error message: %v", rep.Errors[0])
+	}
+}
+
+func TestEngineTimeoutRecordsUnstartedScanners(t *testing.T) {
+	slowSc := &mockScanner{
+		name:  "slow-scanner-1",
+		delay: 200 * time.Millisecond,
+	}
+	queuedSc1 := &mockScanner{
+		name:  "queued-scanner-2",
+		delay: 200 * time.Millisecond,
+	}
+	queuedSc2 := &mockScanner{
+		name:  "queued-scanner-3",
+		delay: 200 * time.Millisecond,
+	}
+
+	engine := NewEngine(EngineConfig{
+		MaxWorkers: 1,
+		Timeout:    30 * time.Millisecond,
+	})
+
+	rep, err := engine.ExecuteWithReport(context.Background(), []Scanner{slowSc, queuedSc1, queuedSc2})
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+
+	if len(rep.Errors) != 3 {
+		t.Fatalf("expected all 3 scanners (1 running + 2 queued) to report timeout errors, got %d: %v", len(rep.Errors), rep.Errors)
+	}
+
+	foundUnstarted := false
+	for _, e := range rep.Errors {
+		if strings.Contains(e.Error(), "did not complete before timeout") {
+			foundUnstarted = true
+		}
+	}
+	if !foundUnstarted {
+		t.Errorf("expected unstarted scanner timeout error in %v", rep.Errors)
+	}
+}
+

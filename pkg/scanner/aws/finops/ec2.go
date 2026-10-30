@@ -54,10 +54,21 @@ var instanceCostMap = map[string]float64{
 	"p3.16xlarge": 24.48,
 }
 
+// CloudWatchMetricAPI defines the CloudWatch API subset needed for metric queries.
+type CloudWatchMetricAPI interface {
+	GetMetricStatistics(ctx context.Context, params *cloudwatch.GetMetricStatisticsInput, optFns ...func(*cloudwatch.Options)) (*cloudwatch.GetMetricStatisticsOutput, error)
+}
+
+// EC2InstanceAPI defines the EC2 API subset needed by EC2Scanner.
+type EC2InstanceAPI interface {
+	ec2.DescribeInstancesAPIClient
+}
+
 // EC2Scanner checks for Zombie and Over-provisioned EC2 instances.
 type EC2Scanner struct {
-	ec2Client *ec2.Client
-	cwClient  *cloudwatch.Client
+	ec2Client EC2InstanceAPI
+	cwClient  CloudWatchMetricAPI
+	region    string
 }
 
 // Ensure EC2Scanner satisfies MetaScanner at compile time.
@@ -67,6 +78,19 @@ func NewEC2Scanner(cfg aws.Config) *EC2Scanner {
 	return &EC2Scanner{
 		ec2Client: ec2.NewFromConfig(cfg),
 		cwClient:  cloudwatch.NewFromConfig(cfg),
+		region:    cfg.Region,
+	}
+}
+
+func NewEC2ScannerWithClients(ec2Client EC2InstanceAPI, cwClient CloudWatchMetricAPI, region ...string) *EC2Scanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &EC2Scanner{
+		ec2Client: ec2Client,
+		cwClient:  cwClient,
+		region:    r,
 	}
 }
 
@@ -115,7 +139,10 @@ func (s *EC2Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 
 			for _, instance := range reservation.Instances {
 				instanceID := aws.ToString(instance.InstanceId)
-				state := string(instance.State.Name)
+				state := ""
+				if instance.State != nil {
+					state = string(instance.State.Name)
+				}
 
 				isOrphaned := false
 
@@ -144,43 +171,50 @@ func (s *EC2Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					metrics["CostEstimateAvailable"] = false
 				}
 
-				if instance.State.Name == types.InstanceStateNameRunning {
+				if instance.State != nil && instance.State.Name == types.InstanceStateNameRunning {
 					// 1. Fetch 30-day Max CPU for right-sizing
-					maxCPU, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/EC2", "CPUUtilization", "InstanceId", instanceID, cwtypes.StatisticMaximum)
-					metrics["MaxCPU_30Days"] = maxCPU
+					maxCPU, cpuErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/EC2", "CPUUtilization", "InstanceId", instanceID, cwtypes.StatisticMaximum)
 
 					// 2. Fetch Network I/O (Sum) to detect Zombies
-					netIn, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/EC2", "NetworkIn", "InstanceId", instanceID, cwtypes.StatisticSum)
-					netOut, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/EC2", "NetworkOut", "InstanceId", instanceID, cwtypes.StatisticSum)
-					metrics["NetworkIn_30Days"] = netIn
-					metrics["NetworkOut_30Days"] = netOut
+					netIn, netInErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/EC2", "NetworkIn", "InstanceId", instanceID, cwtypes.StatisticSum)
+					netOut, netOutErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/EC2", "NetworkOut", "InstanceId", instanceID, cwtypes.StatisticSum)
 
-					// 3. (Optional) Fetch Memory if CloudWatch Agent is installed
-					// AWS doesn't provide memory natively, so we look in the CWAgent namespace
-					maxMem, err := FetchCloudWatchMetric(ctx, s.cwClient, "CWAgent", "mem_used_percent", "InstanceId", instanceID, cwtypes.StatisticMaximum)
-					if err == nil && maxMem > 0 {
-						metrics["MaxMemory_30Days"] = maxMem
-					}
+					if metricErr := firstErr(cpuErr, netInErr, netOutErr); metricErr != nil {
+						metrics["MetricFetchError"] = metricErr.Error()
+					} else {
+						metrics["MaxCPU_30Days"] = maxCPU
+						metrics["NetworkIn_30Days"] = netIn
+						metrics["NetworkOut_30Days"] = netOut
 
-					// --- Anomaly Detection Logic ---
-					// 1. SCALE UP DETECT: CPU or Memory exceeds 75% utilization (performance & reliability risk)
-					memVal := 0.0
-					if val, ok := metrics["MaxMemory_30Days"]; ok {
-						memVal = val.(float64)
-					}
+						// 3. (Optional) Fetch Memory if CloudWatch Agent is installed
+						// AWS doesn't provide memory natively, so we look in the CWAgent namespace
+						maxMem, err := FetchCloudWatchMetric(ctx, s.cwClient, "CWAgent", "mem_used_percent", "InstanceId", instanceID, cwtypes.StatisticMaximum)
+						if err == nil && maxMem > 0 {
+							metrics["MaxMemory_30Days"] = maxMem
+						}
 
-					if maxCPU >= 75.0 || memVal >= 75.0 {
-						metrics["IssueType"] = "Scale Up (High Utilization)"
-						metrics["Recommendation"] = fmt.Sprintf("Scale Up Instance (%s) — High utilization detected (Max CPU: %.1f%%, Max Memory: %.1f%% exceeds 75%% threshold). Upgrade from %s to a larger instance size or compute/memory-optimized family to prevent throttling and outages.", instanceID, maxCPU, memVal, string(instance.InstanceType))
-					} else if maxCPU < 2.0 && (netIn+netOut) < 10000000 {
-						// 2. ZOMBIE DETECT: Very low Max CPU AND basically zero network traffic over 30 days
-						isOrphaned = true
-						metrics["IssueType"] = "Zombie Instance"
-						metrics["Recommendation"] = fmt.Sprintf("Terminate Instance — estimated waste: $%.2f/month", monthlyCost)
-					} else if maxCPU < 15.0 || (memVal > 0 && memVal < 30.0) {
-						// 3. RIGHT-SIZE DETECT: Max CPU never exceeds 15% (and not already a zombie)
-						metrics["IssueType"] = "Over-Provisioned Instance"
-						metrics["Recommendation"] = fmt.Sprintf("Downsize Instance Type — current cost: $%.2f/month, Max CPU: %.1f%%", monthlyCost, maxCPU)
+						if !isResourceTooYoung(instance.LaunchTime) {
+							// --- Anomaly Detection Logic ---
+							// 1. SCALE UP DETECT: CPU or Memory exceeds 75% utilization (performance & reliability risk)
+							memVal := 0.0
+							if val, ok := metrics["MaxMemory_30Days"]; ok {
+								memVal = val.(float64)
+							}
+
+							if maxCPU >= 75.0 || memVal >= 75.0 {
+								metrics["IssueType"] = "Scale Up (High Utilization)"
+								metrics["Recommendation"] = fmt.Sprintf("Scale Up Instance (%s) — High utilization detected (Max CPU: %.1f%%, Max Memory: %.1f%% exceeds 75%% threshold). Upgrade from %s to a larger instance size or compute/memory-optimized family to prevent throttling and outages.", instanceID, maxCPU, memVal, string(instance.InstanceType))
+							} else if maxCPU < 2.0 && (netIn+netOut) < 10000000 {
+								// 2. ZOMBIE DETECT: Very low Max CPU AND basically zero network traffic over 30 days
+								isOrphaned = true
+								metrics["IssueType"] = "Zombie Instance"
+								metrics["Recommendation"] = fmt.Sprintf("Terminate Instance — estimated waste: $%.2f/month", monthlyCost)
+							} else if maxCPU < 15.0 || (memVal > 0 && memVal < 30.0) {
+								// 3. RIGHT-SIZE DETECT: Max CPU never exceeds 15% (and not already a zombie)
+								metrics["IssueType"] = "Over-Provisioned Instance"
+								metrics["Recommendation"] = fmt.Sprintf("Downsize Instance Type — current cost: $%.2f/month, Max CPU: %.1f%%", monthlyCost, maxCPU)
+							}
+						}
 					}
 				}
 
@@ -198,10 +232,15 @@ func (s *EC2Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 					costWaste = monthlyCost
 				}
 
+				az := ""
+				if instance.Placement != nil {
+					az = aws.ToString(instance.Placement.AvailabilityZone)
+				}
+
 				results = append(results, BuildFinOpsResult(FinOpsResultParams{
 					ResourceID:   instanceID,
 					ResourceType: "EC2",
-					Region:       aws.ToString(instance.Placement.AvailabilityZone),
+					Region:       regionFromAZ(s.region, az),
 					RuleID:       RuleEC2InstanceIdle,
 					DisplayName:  instanceID,
 					IsOrphaned:   isOrphaned,
@@ -220,19 +259,27 @@ func (s *EC2Scanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 	return results, nil
 }
 
-func FetchCloudWatchMetric(ctx context.Context, client *cloudwatch.Client, namespace, metricName string, dimensionName, dimensionValue string, stat cwtypes.Statistic) (float64, error) {
+func FetchCloudWatchMetric(ctx context.Context, client CloudWatchMetricAPI, namespace, metricName string, dimensionName, dimensionValue string, stat cwtypes.Statistic) (float64, error) {
+	return FetchCloudWatchMetricWithDimensions(ctx, client, namespace, metricName, []cwtypes.Dimension{
+		{
+			Name:  aws.String(dimensionName),
+			Value: aws.String(dimensionValue),
+		},
+	}, stat)
+}
+
+func FetchCloudWatchMetricWithDimensions(ctx context.Context, client CloudWatchMetricAPI, namespace, metricName string, dimensions []cwtypes.Dimension, stat cwtypes.Statistic) (float64, error) {
+	if client == nil {
+		return 0, fmt.Errorf("cloudwatch client is nil")
+	}
+
 	endTime := time.Now()
 	startTime := endTime.Add(-30 * 24 * time.Hour)
 
 	input := &cloudwatch.GetMetricStatisticsInput{
 		Namespace:  aws.String(namespace),
 		MetricName: aws.String(metricName),
-		Dimensions: []cwtypes.Dimension{
-			{
-				Name:  aws.String(dimensionName),
-				Value: aws.String(dimensionValue),
-			},
-		},
+		Dimensions: dimensions,
 		StartTime:  aws.Time(startTime),
 		EndTime:    aws.Time(endTime),
 		Period:     aws.Int32(30 * 24 * 60 * 60),
@@ -240,20 +287,35 @@ func FetchCloudWatchMetric(ctx context.Context, client *cloudwatch.Client, names
 	}
 
 	output, err := client.GetMetricStatistics(ctx, input)
-	if err != nil || len(output.Datapoints) == 0 {
+	if err != nil {
 		return 0, err
 	}
-
-	dp := output.Datapoints[0]
+	if output == nil || len(output.Datapoints) == 0 {
+		return 0, nil
+	}
 
 	switch stat {
 	case cwtypes.StatisticMaximum:
-		return aws.ToFloat64(dp.Maximum), nil
+		maxVal := aws.ToFloat64(output.Datapoints[0].Maximum)
+		for _, dp := range output.Datapoints[1:] {
+			if v := aws.ToFloat64(dp.Maximum); v > maxVal {
+				maxVal = v
+			}
+		}
+		return maxVal, nil
 	case cwtypes.StatisticSum:
-		return aws.ToFloat64(dp.Sum), nil
+		sumVal := 0.0
+		for _, dp := range output.Datapoints {
+			sumVal += aws.ToFloat64(dp.Sum)
+		}
+		return sumVal, nil
 	case cwtypes.StatisticAverage:
-		return aws.ToFloat64(dp.Average), nil
+		sumVal := 0.0
+		for _, dp := range output.Datapoints {
+			sumVal += aws.ToFloat64(dp.Average)
+		}
+		return sumVal / float64(len(output.Datapoints)), nil
 	default:
-		return 0, nil
+		return 0, fmt.Errorf("unsupported cloudwatch statistic: %s", stat)
 	}
 }

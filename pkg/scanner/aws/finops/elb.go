@@ -14,10 +14,16 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 )
 
+// ELBDescribeAPI defines the ELBv2 API subset needed by ELBScanner.
+type ELBDescribeAPI interface {
+	elbv2.DescribeLoadBalancersAPIClient
+}
+
 // ELBScanner checks for idle Application/Network Load Balancers that process zero traffic.
 type ELBScanner struct {
-	elbClient *elbv2.Client
-	cwClient  *cloudwatch.Client
+	elbClient ELBDescribeAPI
+	cwClient  CloudWatchMetricAPI
+	region    string
 }
 
 // Ensure ELBScanner satisfies MetaScanner at compile time.
@@ -27,6 +33,19 @@ func NewELBScanner(cfg aws.Config) *ELBScanner {
 	return &ELBScanner{
 		elbClient: elbv2.NewFromConfig(cfg),
 		cwClient:  cloudwatch.NewFromConfig(cfg),
+		region:    cfg.Region,
+	}
+}
+
+func NewELBScannerWithClients(elbClient ELBDescribeAPI, cwClient CloudWatchMetricAPI, region ...string) *ELBScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &ELBScanner{
+		elbClient: elbClient,
+		cwClient:  cwClient,
+		region:    r,
 	}
 }
 
@@ -114,9 +133,11 @@ func (s *ELBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 						cwtypes.StatisticSum,
 					)
 
-					if err == nil {
+					if err != nil {
+						metrics["MetricFetchError"] = err.Error()
+					} else {
 						metrics["Requests_30Days"] = reqCount
-						if reqCount == 0 {
+						if !isResourceTooYoung(lb.CreatedTime) && reqCount == 0 {
 							isOrphaned = true
 							recommendation = fmt.Sprintf("Delete Idle %s Load Balancer — estimated waste: $%.2f/month", strings.ToUpper(lbType), monthlyCost)
 						}
@@ -141,7 +162,7 @@ func (s *ELBScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   resID,
 				ResourceType: "ELB",
-				Region:       "regional",
+				Region:       resolveRegion(s.region, "regional"),
 				RuleID:       RuleELBLoadBalancerIdle,
 				DisplayName:  lbName,
 				IsOrphaned:   isOrphaned,

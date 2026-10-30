@@ -3,6 +3,7 @@ package finops
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/possum-security/possum-core/pkg/model"
 	"github.com/possum-security/possum-core/pkg/scanner"
@@ -13,9 +14,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 )
 
+// LambdaListAPI defines the Lambda API subset needed by LambdaScanner.
+type LambdaListAPI interface {
+	lambda.ListFunctionsAPIClient
+}
+
 type LambdaScanner struct {
-	lambdaClient *lambda.Client
-	cwClient     *cloudwatch.Client
+	lambdaClient LambdaListAPI
+	cwClient     CloudWatchMetricAPI
+	region       string
 }
 
 // Ensure LambdaScanner satisfies MetaScanner at compile time.
@@ -25,7 +32,32 @@ func NewLambdaScanner(cfg aws.Config) *LambdaScanner {
 	return &LambdaScanner{
 		lambdaClient: lambda.NewFromConfig(cfg),
 		cwClient:     cloudwatch.NewFromConfig(cfg),
+		region:       cfg.Region,
 	}
+}
+
+func NewLambdaScannerWithClients(lambdaClient LambdaListAPI, cwClient CloudWatchMetricAPI, region ...string) *LambdaScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &LambdaScanner{
+		lambdaClient: lambdaClient,
+		cwClient:     cwClient,
+		region:       r,
+	}
+}
+
+func parseLambdaLastModified(lastModified *string) *time.Time {
+	if lastModified == nil || *lastModified == "" {
+		return nil
+	}
+	for _, layout := range []string{"2006-01-02T15:04:05.000+0000", time.RFC3339, time.RFC3339Nano} {
+		if t, err := time.Parse(layout, *lastModified); err == nil {
+			return &t
+		}
+	}
+	return nil
 }
 
 func (s *LambdaScanner) Name() string {
@@ -81,41 +113,50 @@ func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 			var recommendation string
 			issueType := "Optimized"
 
-			invocations, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Lambda", "Invocations", "FunctionName", fnName, cwtypes.StatisticSum)
-			avgDurationMs, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Lambda", "Duration", "FunctionName", fnName, cwtypes.StatisticAverage)
-			maxDurationMs, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Lambda", "Duration", "FunctionName", fnName, cwtypes.StatisticMaximum)
-			throttles, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Lambda", "Throttles", "FunctionName", fnName, cwtypes.StatisticSum)
+			invocations, invErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Lambda", "Invocations", "FunctionName", fnName, cwtypes.StatisticSum)
+			avgDurationMs, avgErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Lambda", "Duration", "FunctionName", fnName, cwtypes.StatisticAverage)
+			maxDurationMs, maxErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Lambda", "Duration", "FunctionName", fnName, cwtypes.StatisticMaximum)
+			throttles, thrErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Lambda", "Throttles", "FunctionName", fnName, cwtypes.StatisticSum)
 
-			gbSeconds := (invocations * avgDurationMs / 1000.0) * (float64(allocatedMemory) / 1024.0)
-			monthlyCost := (gbSeconds * 0.0000166667) + ((invocations / 1000000.0) * 0.20)
-
+			monthlyCost := 0.0
 			metrics := map[string]interface{}{
-				"FunctionName":         fnName,
-				"AllocatedMemoryMB":    allocatedMemory,
-				"TimeoutSeconds":       timeoutSec,
-				"Invocations_30Days":   invocations,
-				"AvgDurationMs":        avgDurationMs,
-				"MaxDurationMs":        maxDurationMs,
-				"Throttles_30Days":     throttles,
-				"EstimatedMonthlyCost": monthlyCost,
+				"FunctionName":      fnName,
+				"AllocatedMemoryMB": allocatedMemory,
+				"TimeoutSeconds":    timeoutSec,
 			}
 
-			timeoutMs := float64(timeoutSec * 1000)
-			// Check 1: Dormant/Zombie function
-			if invocations == 0 {
-				isOrphaned = true
-				issueType = "Dormant Function"
-				recommendation = "Delete or archive dormant Lambda function (0 invocations in last 30 days)."
-			} else if throttles > 0 {
-				issueType = "Scale Up (Throttled)"
-				recommendation = fmt.Sprintf("Scale Up Lambda Concurrency — Function experienced %.0f throttle events in 30 days.", throttles)
-			} else if maxDurationMs >= 0.75*timeoutMs || (avgDurationMs > 0 && avgDurationMs >= 0.75*timeoutMs) {
-				issueType = "Scale Up (High Duration/Memory)"
-				recommendation = fmt.Sprintf("Scale Up Lambda Memory — Function runtime (Max: %.0fms) exceeds 75%% of configured timeout (%ds).", maxDurationMs, timeoutSec)
-			} else if allocatedMemory >= 1024 && avgDurationMs < 200 {
-				issueType = "Over-Provisioned Memory"
-				recommendation = fmt.Sprintf("Downsize Lambda Memory — Function has %dMB allocated but executes in only %.0fms.", allocatedMemory, avgDurationMs)
+			if metricErr := firstErr(invErr, avgErr, maxErr, thrErr); metricErr != nil {
+				metrics["MetricFetchError"] = metricErr.Error()
+			} else {
+				gbSeconds := (invocations * avgDurationMs / 1000.0) * (float64(allocatedMemory) / 1024.0)
+				monthlyCost = (gbSeconds * 0.0000166667) + ((invocations / 1000000.0) * 0.20)
+
+				metrics["Invocations_30Days"] = invocations
+				metrics["AvgDurationMs"] = avgDurationMs
+				metrics["MaxDurationMs"] = maxDurationMs
+				metrics["Throttles_30Days"] = throttles
+
+				if !isResourceTooYoung(parseLambdaLastModified(fn.LastModified)) {
+					timeoutMs := float64(timeoutSec * 1000)
+					// Check 1: Dormant/Zombie function
+					if invocations == 0 {
+						isOrphaned = true
+						issueType = "Dormant Function"
+						recommendation = "Delete or archive dormant Lambda function (0 invocations in last 30 days)."
+					} else if throttles > 0 {
+						issueType = "Scale Up (Throttled)"
+						recommendation = fmt.Sprintf("Scale Up Lambda Concurrency — Function experienced %.0f throttle events in 30 days.", throttles)
+					} else if maxDurationMs >= 0.75*timeoutMs || (avgDurationMs > 0 && avgDurationMs >= 0.75*timeoutMs) {
+						issueType = "Scale Up (High Duration/Memory)"
+						recommendation = fmt.Sprintf("Scale Up Lambda Memory — Function runtime (Max: %.0fms) exceeds 75%% of configured timeout (%ds).", maxDurationMs, timeoutSec)
+					} else if allocatedMemory >= 1024 && avgDurationMs < 200 {
+						issueType = "Over-Provisioned Memory"
+						recommendation = fmt.Sprintf("Downsize Lambda Memory — Function has %dMB allocated but executes in only %.0fms.", allocatedMemory, avgDurationMs)
+					}
+				}
 			}
+
+			metrics["EstimatedMonthlyCost"] = monthlyCost
 
 			if recommendation != "" {
 				metrics["Recommendation"] = recommendation
@@ -135,7 +176,7 @@ func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   resID,
 				ResourceType: "Lambda",
-				Region:       "regional",
+				Region:       resolveRegion(s.region, "regional"),
 				RuleID:       RuleLambdaFunctionUnused,
 				DisplayName:  fnName,
 				IsOrphaned:   isOrphaned,

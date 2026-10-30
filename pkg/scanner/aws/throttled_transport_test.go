@@ -139,3 +139,74 @@ func TestThrottledTransport_ContextCanceled(t *testing.T) {
 	assert.Nil(t, resp)
 	assert.Contains(t, err.Error(), "context")
 }
+
+func TestThrottledTransport_PerAccountLimiterKey(t *testing.T) {
+	rec := NewMemoryTelemetryRecorder(100)
+	mock := &mockRoundTripper{
+		handler: func(req *http.Request) (*http.Response, error) {
+			res := httptest.NewRecorder()
+			res.WriteHeader(http.StatusOK)
+			return res.Result(), nil
+		},
+	}
+
+	transport := NewThrottledTransport(mock, "111122223333", rec)
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", "https://ec2.us-east-1.amazonaws.com/?Action=DescribeInstances", nil)
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	transport.mu.RLock()
+	_, exists := transport.limiters["111122223333:ec2"]
+	transport.mu.RUnlock()
+	assert.True(t, exists, "expected limiter to be keyed by accountID:service")
+}
+
+func TestThrottledTransport_HTTP400ThrottlingExceptionAndBackoffRetry(t *testing.T) {
+	rec := NewMemoryTelemetryRecorder(100)
+	var attempts int
+	var bodiesSeen []string
+
+	mock := &mockRoundTripper{
+		handler: func(req *http.Request) (*http.Response, error) {
+			attempts++
+			if req.Body != nil {
+				b := make([]byte, 1024)
+				n, _ := req.Body.Read(b)
+				bodiesSeen = append(bodiesSeen, string(b[:n]))
+			}
+			res := httptest.NewRecorder()
+			if attempts < 3 {
+				res.WriteHeader(http.StatusBadRequest)
+				_, _ = res.WriteString(`{"__type":"ThrottlingException","message":"Rate exceeded"}`)
+				return res.Result(), nil
+			}
+			res.WriteHeader(http.StatusOK)
+			_, _ = res.WriteString(`{"Functions":[]}`)
+			return res.Result(), nil
+		},
+	}
+
+	transport := NewThrottledTransport(mock, "acc-backoff", rec)
+	transport.BaseDelay = 5 * time.Millisecond
+	transport.MaxRetries = 3
+
+	req, err := http.NewRequestWithContext(context.Background(), "POST", "https://lambda.us-east-1.amazonaws.com/", strings.NewReader("Action=ListFunctions"))
+	require.NoError(t, err)
+
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, 3, attempts, "expected 2 throttled attempts followed by 1 successful retry")
+	assert.Equal(t, []string{"Action=ListFunctions", "Action=ListFunctions", "Action=ListFunctions"}, bodiesSeen)
+
+	stats := rec.GetStats()
+	assert.Equal(t, int64(1), stats["total_calls"])
+	assert.Equal(t, int64(1), stats["throttled_calls"])
+
+	recent := rec.GetRecentCalls(10)
+	require.Len(t, recent, 1)
+	assert.True(t, recent[0].Throttled, "expected HTTP 400 ThrottlingException to record Throttled=true")
+	assert.Equal(t, http.StatusOK, recent[0].StatusCode)
+}
+

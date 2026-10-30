@@ -67,10 +67,7 @@ func (s *APIGatewayScanner) Name() string {
 
 // Scan executes security posture evaluations against API Gateway v1 and v2 resources.
 func (s *APIGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
-	limit := 0
-	if val, ok := ctx.Value("ResourceLimit").(int); ok {
-		limit = val
-	}
+	limit := scanner.GetResourceLimit(ctx)
 	processedCount := 0
 	var results []scanner.ScanResult
 	region := s.region
@@ -82,7 +79,7 @@ func (s *APIGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 	if s.v1Client != nil {
 		paginator := apigateway.NewGetRestApisPaginator(s.v1Client, &apigateway.GetRestApisInput{})
 		for paginator.HasMorePages() {
-			if limit > 0 && processedCount >= limit {
+			if scanner.ShouldStop(ctx, processedCount, limit) {
 				break
 			}
 			page, err := paginator.NextPage(ctx)
@@ -91,7 +88,7 @@ func (s *APIGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 			}
 
 			for _, api := range page.Items {
-				if limit > 0 && processedCount >= limit {
+				if scanner.ShouldStop(ctx, processedCount, limit) {
 					break
 				}
 				processedCount++
@@ -100,12 +97,20 @@ func (s *APIGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 				apiName := aws.ToString(api.Name)
 
 				// Check REST API Resources for Authorization (apigateway_restapi_authorizers_enabled)
-				resources, err := s.v1Client.GetResources(ctx, &apigateway.GetResourcesInput{
-					RestApiId: api.Id,
-				})
 				hasUnauthorizedMethod := false
 				var unauthorizedMethods []string
-				if err == nil && resources != nil {
+				var resPosition *string
+				for {
+					if scanner.ShouldStop(ctx, 0, 0) {
+						break
+					}
+					resources, err := s.v1Client.GetResources(ctx, &apigateway.GetResourcesInput{
+						RestApiId: api.Id,
+						Position:  resPosition,
+					})
+					if err != nil || resources == nil {
+						break
+					}
 					for _, res := range resources.Items {
 						for httpMethod, method := range res.ResourceMethods {
 							verb := strings.ToUpper(httpMethod)
@@ -126,6 +131,10 @@ func (s *APIGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 							}
 						}
 					}
+					if resources.Position == nil || *resources.Position == "" {
+						break
+					}
+					resPosition = resources.Position
 				}
 
 				authStatus := "PASS"
@@ -289,7 +298,7 @@ func (s *APIGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 	if s.v2Client != nil {
 		var nextToken *string
 		for {
-			if limit > 0 && processedCount >= limit {
+			if scanner.ShouldStop(ctx, processedCount, limit) {
 				break
 			}
 			apisOut, err := s.v2Client.GetApis(ctx, &apigatewayv2.GetApisInput{
@@ -300,7 +309,7 @@ func (s *APIGatewayScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 			}
 
 			for _, api := range apisOut.Items {
-				if limit > 0 && processedCount >= limit {
+				if scanner.ShouldStop(ctx, processedCount, limit) {
 					break
 				}
 				processedCount++
@@ -427,6 +436,6 @@ func (s *APIGatewayScanner) Meta() scanner.ScannerMeta {
 		Scope:         graph.ScopeRegional,
 		ExecutionCost: scanner.CostMedium,
 		Service:       "apigateway",
-		CheckIDs:      []string{"apigateway_restapi_authorizers_enabled", "apigateway_restapi_logging_enabled", "apigateway_restapi_tracing_enabled", "apigatewayv2_api_access_logging_enabled", "apigatewayv2_api_authorizers_enabled"},
+		CheckIDs:      []string{"apigateway_restapi_authorizers_enabled", "apigateway_restapi_logging_enabled", "apigateway_restapi_tracing_enabled", "apigateway_restapi_waf_acl_attached", "apigatewayv2_api_access_logging_enabled", "apigatewayv2_api_authorizers_enabled"},
 	}
 }

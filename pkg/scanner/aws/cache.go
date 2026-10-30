@@ -2,6 +2,7 @@ package aws
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -51,6 +52,22 @@ func (c *AWSCache) Clear() {
 	c.entries = make(map[string]*cachedResponse)
 }
 
+// EvictExpired removes all expired entries from the cache.
+func (c *AWSCache) EvictExpired() {
+	now := time.Now()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.evictExpiredLocked(now)
+}
+
+func (c *AWSCache) evictExpiredLocked(now time.Time) {
+	for k, v := range c.entries {
+		if !v.expiresAt.IsZero() && !now.Before(v.expiresAt) {
+			delete(c.entries, k)
+		}
+	}
+}
+
 // InvalidateAccount removes all cached entries for a specific account.
 func (c *AWSCache) InvalidateAccount(accountID string) {
 	c.mu.Lock()
@@ -92,6 +109,16 @@ func NewAWSCacheTransport(base http.RoundTripper, accountID string) *AWSCacheTra
 	return GetSharedAWSCache().ForAccount(accountID, base)
 }
 
+// AccountID returns the account identifier associated with this cache transport.
+func (t *AWSCacheTransport) AccountID() string {
+	return t.accountID
+}
+
+// Base returns the underlying RoundTripper wrapped by this cache transport.
+func (t *AWSCacheTransport) Base() http.RoundTripper {
+	return t.base
+}
+
 func (t *AWSCacheTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Only cache read-only requests (GET/HEAD or POST with describe/list/get actions)
 	if !t.isCacheableRequest(req) {
@@ -104,29 +131,53 @@ func (t *AWSCacheTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 
 	// 1. Check Cache Hit
+	now := time.Now()
 	t.cache.mu.RLock()
-	if cached, ok := t.cache.entries[key]; ok {
-		if time.Now().Before(cached.expiresAt) {
-			t.cache.mu.RUnlock()
+	cached, ok := t.cache.entries[key]
+	t.cache.mu.RUnlock()
+	if ok {
+		if now.Before(cached.expiresAt) {
 			return t.createResponse(cached, req), nil
 		}
+		t.cache.mu.Lock()
+		if cur, exists := t.cache.entries[key]; exists && !time.Now().Before(cur.expiresAt) {
+			delete(t.cache.entries, key)
+		}
+		t.cache.mu.Unlock()
 	}
-	t.cache.mu.RUnlock()
 
 	// 2. Cache Miss: Coalesce concurrent requests using Singleflight
 	resAny, err, _ := t.cache.sfGroup.Do(key, func() (interface{}, error) {
 		// Re-check cache inside singleflight barrier
 		t.cache.mu.RLock()
-		if cached, ok := t.cache.entries[key]; ok {
+		cached, ok := t.cache.entries[key]
+		t.cache.mu.RUnlock()
+		if ok {
 			if time.Now().Before(cached.expiresAt) {
-				t.cache.mu.RUnlock()
 				return cached, nil
 			}
+			t.cache.mu.Lock()
+			if cur, exists := t.cache.entries[key]; exists && !time.Now().Before(cur.expiresAt) {
+				delete(t.cache.entries, key)
+			}
+			t.cache.mu.Unlock()
 		}
-		t.cache.mu.RUnlock()
+
+		// Clone request with an uncancelled context so one caller cancelling does not abort
+		// the shared singleflight request for other concurrent callers.
+		sfCtx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), 45*time.Second)
+		defer cancel()
+		sfReq := req.Clone(sfCtx)
+		if req.Body != nil {
+			bodyBytes, readErr := io.ReadAll(req.Body)
+			if readErr == nil {
+				req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+				sfReq.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			}
+		}
 
 		// Execute actual HTTP request
-		resp, err := t.base.RoundTrip(req)
+		resp, err := t.base.RoundTrip(sfReq)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +188,7 @@ func (t *AWSCacheTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			return nil, err
 		}
 
-		cached := &cachedResponse{
+		cached = &cachedResponse{
 			statusCode: resp.StatusCode,
 			header:     resp.Header.Clone(),
 			body:       bodyBytes,
@@ -145,8 +196,10 @@ func (t *AWSCacheTransport) RoundTrip(req *http.Request) (*http.Response, error)
 
 		// Only cache successful 200 OK responses with defined TTL
 		if resp.StatusCode == http.StatusOK && ttl > 0 {
-			cached.expiresAt = time.Now().Add(ttl)
+			writeNow := time.Now()
+			cached.expiresAt = writeNow.Add(ttl)
 			t.cache.mu.Lock()
+			t.cache.evictExpiredLocked(writeNow)
 			t.cache.entries[key] = cached
 			t.cache.mu.Unlock()
 		} else {
@@ -160,11 +213,15 @@ func (t *AWSCacheTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		return nil, err
 	}
 
-	cached := resAny.(*cachedResponse)
+	cached = resAny.(*cachedResponse)
 	return t.createResponse(cached, req), nil
 }
 
 func (t *AWSCacheTransport) isCacheableRequest(req *http.Request) bool {
+	if isSensitiveUncacheableRequest(req) {
+		return false
+	}
+
 	if req.Method == http.MethodGet || req.Method == http.MethodHead {
 		return true
 	}
@@ -175,6 +232,9 @@ func (t *AWSCacheTransport) isCacheableRequest(req *http.Request) bool {
 			action := target
 			if dotIdx >= 0 {
 				action = target[dotIdx+1:]
+			}
+			if strings.EqualFold(action, "GetSecretValue") || strings.EqualFold(action, "GetObject") {
+				return false
 			}
 			return strings.HasPrefix(action, "Describe") ||
 				strings.HasPrefix(action, "List") ||
@@ -187,12 +247,55 @@ func (t *AWSCacheTransport) isCacheableRequest(req *http.Request) bool {
 			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			if err == nil {
 				str := string(bodyBytes)
+				lowerStr := strings.ToLower(str)
+				if strings.Contains(lowerStr, "action=getsecretvalue") || strings.Contains(lowerStr, "action=getobject") {
+					return false
+				}
 				return strings.Contains(str, "Action=Describe") ||
 					strings.Contains(str, "Action=List") ||
 					strings.Contains(str, "Action=Get")
 			}
 		}
 	}
+	return false
+}
+
+func isSensitiveUncacheableRequest(req *http.Request) bool {
+	if req == nil || req.URL == nil {
+		return false
+	}
+
+	target := strings.ToLower(req.Header.Get("X-Amz-Target"))
+	if strings.Contains(target, "getsecretvalue") || strings.Contains(target, "getobject") {
+		return true
+	}
+
+	q := req.URL.Query()
+	if action := q.Get("Action"); strings.EqualFold(action, "GetSecretValue") || strings.EqualFold(action, "GetObject") {
+		return true
+	}
+	if xid := q.Get("x-id"); strings.EqualFold(xid, "GetObject") {
+		return true
+	}
+
+	// Check for S3 GetObject requests (virtual-hosted or path-style object GET/HEAD)
+	host := strings.ToLower(strings.Split(req.URL.Host, ":")[0])
+	isS3Host := strings.HasPrefix(host, "s3.") || host == "s3.amazonaws.com" || strings.Contains(host, ".s3.") || strings.Contains(host, ".s3-")
+	if isS3Host && (req.Method == http.MethodGet || req.Method == http.MethodHead) {
+		trimmedPath := strings.Trim(req.URL.Path, "/")
+		if trimmedPath != "" {
+			isPathStyle := strings.HasPrefix(host, "s3.") || host == "s3.amazonaws.com"
+			if isPathStyle {
+				if strings.Contains(trimmedPath, "/") {
+					return true
+				}
+			} else {
+				// Virtual-hosted bucket.s3...: any non-empty path is an object key
+				return true
+			}
+		}
+	}
+
 	return false
 }
 
@@ -240,7 +343,8 @@ func (t *AWSCacheTransport) generateCacheKey(req *http.Request) (string, time.Du
 		canonicalQuery.WriteString(k + "=" + url.QueryEscape(q.Get(k)) + "&")
 	}
 
-	rawKey := host + "|" + service + "|" + req.URL.Path + "|" + canonicalQuery.String() + "|" + bodyHash
+	target := req.Header.Get("X-Amz-Target")
+	rawKey := req.Method + "|" + host + "|" + service + "|" + req.URL.Path + "|" + target + "|" + canonicalQuery.String() + "|" + bodyHash
 	h := sha256.Sum256([]byte(rawKey))
 	return "possum:aws:" + t.accountID + ":" + hex.EncodeToString(h[:]), ttl
 }

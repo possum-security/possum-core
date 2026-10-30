@@ -13,10 +13,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 )
 
+// RDSInstanceAPI defines the RDS API subset needed by RDSScanner.
+type RDSInstanceAPI interface {
+	rds.DescribeDBInstancesAPIClient
+}
+
 // RDSScanner checks for Zombie (no connections) and Over-provisioned RDS databases.
 type RDSScanner struct {
-	rdsClient *rds.Client
-	cwClient  *cloudwatch.Client
+	rdsClient RDSInstanceAPI
+	cwClient  CloudWatchMetricAPI
+	region    string
 }
 
 // Ensure RDSScanner satisfies MetaScanner at compile time.
@@ -36,6 +42,19 @@ func NewRDSScanner(cfg aws.Config) *RDSScanner {
 	return &RDSScanner{
 		rdsClient: rds.NewFromConfig(cfg),
 		cwClient:  cloudwatch.NewFromConfig(cfg),
+		region:    cfg.Region,
+	}
+}
+
+func NewRDSScannerWithClients(rdsClient RDSInstanceAPI, cwClient CloudWatchMetricAPI, region ...string) *RDSScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &RDSScanner{
+		rdsClient: rdsClient,
+		cwClient:  cwClient,
+		region:    r,
 	}
 }
 
@@ -57,17 +76,14 @@ func (s *RDSScanner) Meta() scanner.ScannerMeta {
 }
 
 func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
-	limit := 0
-	if val, ok := ctx.Value("ResourceLimit").(int); ok {
-		limit = val
-	}
+	limit := scanner.GetResourceLimit(ctx)
 	processedCount := 0
 	var results []scanner.ScanResult
 
 	paginator := rds.NewDescribeDBInstancesPaginator(s.rdsClient, &rds.DescribeDBInstancesInput{})
 
 	for paginator.HasMorePages() {
-		if limit > 0 && processedCount >= limit {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
 			break
 		}
 		page, err := paginator.NextPage(ctx)
@@ -76,7 +92,7 @@ func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 		}
 
 		for _, instance := range page.DBInstances {
-			if limit > 0 && processedCount >= limit {
+			if scanner.ShouldStop(ctx, processedCount, limit) {
 				break
 			}
 			processedCount++
@@ -85,6 +101,7 @@ func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			state := aws.ToString(instance.DBInstanceStatus)
 
 			isOrphaned := false
+			costWaste := 0.0
 
 			instanceClass := aws.ToString(instance.DBInstanceClass)
 			hourlyRate, hasCost := rdsCostMap[instanceClass]
@@ -102,38 +119,42 @@ func (s *RDSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 
 			if state == "available" {
 				// 1. Fetch 30-day Max CPU for right-sizing
-				maxCPU, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", instanceID, cwtypes.StatisticMaximum)
-				metrics["MaxCPU_30Days"] = maxCPU
+				maxCPU, cpuErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", instanceID, cwtypes.StatisticMaximum)
 
 				// 2. Fetch Max Database Connections to detect Zombies
-				maxConnections, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", instanceID, cwtypes.StatisticMaximum)
-				metrics["MaxConnections_30Days"] = maxConnections
+				maxConnections, connErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", instanceID, cwtypes.StatisticMaximum)
 
-				// --- Anomaly Detection Logic ---
-				if maxConnections == 0 {
-					// ZOMBIE DETECT: Literally 0 connections to the database over the last 30 days.
-					isOrphaned = true
-					metrics["IssueType"] = "Zombie DB"
-					metrics["Recommendation"] = "Take Snapshot & Delete DB (0 connections in 30 days)"
-				} else if maxCPU >= 75.0 {
-					metrics["IssueType"] = "Scale Up (High Utilization)"
-					metrics["Recommendation"] = fmt.Sprintf("Scale Up RDS Instance Class — High CPU load (Max CPU: %.1f%% exceeds 75%% threshold).", maxCPU)
-				} else if maxCPU < 15.0 {
-					isOrphaned = true // Over-provisioned is flagged for FinOps savings
-					metrics["IssueType"] = "Over-Provisioned DB"
-					metrics["Recommendation"] = fmt.Sprintf("Downsize DB Instance Class — Max CPU is only %.1f%%.", maxCPU)
+				if metricErr := firstErr(cpuErr, connErr); metricErr != nil {
+					metrics["MetricFetchError"] = metricErr.Error()
+				} else {
+					metrics["MaxCPU_30Days"] = maxCPU
+					metrics["MaxConnections_30Days"] = maxConnections
+
+					if !isResourceTooYoung(instance.InstanceCreateTime) {
+						// --- Anomaly Detection Logic ---
+						if maxConnections == 0 {
+							// ZOMBIE DETECT: Literally 0 connections to the database over the last 30 days.
+							isOrphaned = true
+							costWaste = monthlyCost
+							metrics["IssueType"] = "Zombie DB"
+							metrics["Recommendation"] = "Take Snapshot & Delete DB (0 connections in 30 days)"
+						} else if maxCPU >= 75.0 {
+							metrics["IssueType"] = "Scale Up (High Utilization)"
+							metrics["Recommendation"] = fmt.Sprintf("Scale Up RDS Instance Class — High CPU load (Max CPU: %.1f%% exceeds 75%% threshold).", maxCPU)
+						} else if maxCPU < 15.0 {
+							isOrphaned = true // Over-provisioned is flagged for FinOps savings
+							costWaste = monthlyCost * 0.5
+							metrics["IssueType"] = "Over-Provisioned DB"
+							metrics["Recommendation"] = fmt.Sprintf("Downsize DB Instance Class — Max CPU is only %.1f%%.", maxCPU)
+						}
+					}
 				}
-			}
-
-			costWaste := 0.0
-			if isOrphaned {
-				costWaste = monthlyCost
 			}
 
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   instanceID,
 				ResourceType: "RDS",
-				Region:       aws.ToString(instance.AvailabilityZone),
+				Region:       regionFromAZ(s.region, aws.ToString(instance.AvailabilityZone)),
 				RuleID:       RuleRDSInstanceIdle,
 				DisplayName:  instanceID,
 				IsOrphaned:   isOrphaned,

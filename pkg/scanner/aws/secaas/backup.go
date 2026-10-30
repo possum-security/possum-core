@@ -46,6 +46,8 @@ func (s *BackupScanner) Name() string {
 
 // Scan audits AWS Backup plans and vaults in the configured region.
 func (s *BackupScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
+	limit := scanner.GetResourceLimit(ctx)
+	processedCount := 0
 	var results []scanner.ScanResult
 	region := s.region
 	if region == "" {
@@ -56,12 +58,30 @@ func (s *BackupScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 	nodes := []graph.Node{{ID: resourceID, NodeType: "SecaaS-Backup"}}
 
 	// a) backup_plans_exist (HIGH)
-	plansOut, err := s.client.ListBackupPlans(ctx, &backup.ListBackupPlansInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list backup plans: %w", err)
+	var planNames []string
+	planCount := 0
+	plansPaginator := backup.NewListBackupPlansPaginator(s.client, &backup.ListBackupPlansInput{})
+	for plansPaginator.HasMorePages() {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
+			break
+		}
+		plansOut, err := plansPaginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list backup plans: %w", err)
+		}
+		for _, p := range plansOut.BackupPlansList {
+			if scanner.ShouldStop(ctx, processedCount, limit) {
+				break
+			}
+			processedCount++
+			planCount++
+			if p.BackupPlanName != nil {
+				planNames = append(planNames, aws.ToString(p.BackupPlanName))
+			}
+		}
 	}
 
-	if len(plansOut.BackupPlansList) == 0 {
+	if planCount == 0 {
 		results = append(results, scanner.ScanResult{
 			ResourceID:   resourceID,
 			ResourceType: "SecaaS-Backup",
@@ -78,12 +98,6 @@ func (s *BackupScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 			Nodes: nodes,
 		})
 	} else {
-		var planNames []string
-		for _, p := range plansOut.BackupPlansList {
-			if p.BackupPlanName != nil {
-				planNames = append(planNames, aws.ToString(p.BackupPlanName))
-			}
-		}
 		results = append(results, scanner.ScanResult{
 			ResourceID:   resourceID,
 			ResourceType: "SecaaS-Backup",
@@ -92,8 +106,8 @@ func (s *BackupScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 			RuleID:       "backup_plans_exist",
 			Severity:     "INFO",
 			Metrics: map[string]interface{}{
-				"StatusExtended": fmt.Sprintf("Found %d AWS Backup plan(s) in region %s.", len(plansOut.BackupPlansList), region),
-				"PlanCount":      len(plansOut.BackupPlansList),
+				"StatusExtended": fmt.Sprintf("Found %d AWS Backup plan(s) in region %s.", planCount, region),
+				"PlanCount":      planCount,
 				"BackupPlans":    planNames,
 			},
 			Nodes: nodes,
@@ -101,12 +115,30 @@ func (s *BackupScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 	}
 
 	// b) backup_vaults_exist (MEDIUM)
-	vaultsOut, err := s.client.ListBackupVaults(ctx, &backup.ListBackupVaultsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list backup vaults: %w", err)
+	var vaultNames []string
+	vaultCount := 0
+	vaultsPaginator := backup.NewListBackupVaultsPaginator(s.client, &backup.ListBackupVaultsInput{})
+	for vaultsPaginator.HasMorePages() {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
+			break
+		}
+		vaultsOut, err := vaultsPaginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list backup vaults: %w", err)
+		}
+		for _, v := range vaultsOut.BackupVaultList {
+			if scanner.ShouldStop(ctx, processedCount, limit) {
+				break
+			}
+			processedCount++
+			vaultCount++
+			if v.BackupVaultName != nil {
+				vaultNames = append(vaultNames, aws.ToString(v.BackupVaultName))
+			}
+		}
 	}
 
-	if len(vaultsOut.BackupVaultList) == 0 {
+	if vaultCount == 0 {
 		results = append(results, scanner.ScanResult{
 			ResourceID:   resourceID,
 			ResourceType: "SecaaS-Backup",
@@ -123,12 +155,6 @@ func (s *BackupScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 			Nodes: nodes,
 		})
 	} else {
-		var vaultNames []string
-		for _, v := range vaultsOut.BackupVaultList {
-			if v.BackupVaultName != nil {
-				vaultNames = append(vaultNames, aws.ToString(v.BackupVaultName))
-			}
-		}
 		results = append(results, scanner.ScanResult{
 			ResourceID:   resourceID,
 			ResourceType: "SecaaS-Backup",
@@ -137,8 +163,8 @@ func (s *BackupScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 			RuleID:       "backup_vaults_exist",
 			Severity:     "INFO",
 			Metrics: map[string]interface{}{
-				"StatusExtended": fmt.Sprintf("Found %d AWS Backup vault(s) in region %s.", len(vaultsOut.BackupVaultList), region),
-				"VaultCount":     len(vaultsOut.BackupVaultList),
+				"StatusExtended": fmt.Sprintf("Found %d AWS Backup vault(s) in region %s.", vaultCount, region),
+				"VaultCount":     vaultCount,
 				"BackupVaults":   vaultNames,
 			},
 			Nodes: nodes,

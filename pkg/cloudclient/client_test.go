@@ -109,3 +109,50 @@ func TestUploadBundleMissingAPIKey(t *testing.T) {
 		t.Error("Expected error when APIKey is empty, got nil")
 	}
 }
+
+func TestPrivacyRedaction_GitEmailAndSensitiveMetadata(t *testing.T) {
+	t.Setenv("GITHUB_ACTOR", "dev@example.com")
+	t.Setenv("GITLAB_USER_EMAIL", "secret-user@example.com")
+
+	results := []model.ScanResult{
+		{
+			ResourceID:   "fn-1",
+			ResourceType: "AWS::Lambda::Function",
+			Region:       "us-east-1",
+			RuleID:       "lambda_env_secrets",
+			Severity:     model.SeverityHigh,
+			Status:       model.StatusFail,
+			Metadata: map[string]interface{}{
+				"db_password": "super-secret-password",
+				"owner_email": "alice@company.com",
+				"size_mb":     128,
+			},
+			Metrics: map[string]interface{}{
+				"DisplayName": "fn-1",
+				"api_token":   "tok_live_12345",
+			},
+		},
+	}
+
+	bundle := BuildBundle("123456789012", "scan_privacy_1", results)
+	if bundle.GitContext.Author != "" {
+		t.Errorf("Expected author email to be omitted/redacted, got %q", bundle.GitContext.Author)
+	}
+	if bundle.Results[0].Metadata["db_password"] != "[REDACTED]" {
+		t.Errorf("Expected db_password to be [REDACTED], got %v", bundle.Results[0].Metadata["db_password"])
+	}
+	if bundle.Results[0].Metadata["owner_email"] != "[REDACTED]" {
+		t.Errorf("Expected owner_email to be [REDACTED], got %v", bundle.Results[0].Metadata["owner_email"])
+	}
+	if bundle.Results[0].Metadata["size_mb"] != 128 {
+		t.Errorf("Expected non-sensitive metadata size_mb=128 to be preserved, got %v", bundle.Results[0].Metadata["size_mb"])
+	}
+	metricsMap := bundle.Results[0].Metrics.(map[string]interface{})
+	if metricsMap["api_token"] != "[REDACTED]" {
+		t.Errorf("Expected api_token in Metrics to be [REDACTED], got %v", metricsMap["api_token"])
+	}
+	if metricsMap["DisplayName"] != "fn-1" {
+		t.Errorf("Expected DisplayName in Metrics to be preserved, got %v", metricsMap["DisplayName"])
+	}
+}
+

@@ -59,6 +59,50 @@ const (
 	RuleECSServiceIdle = "ecs_service_idle"
 )
 
+// MinResourceAge is the minimum age a resource must have before being flagged as idle/zombie
+// based on 30-day CloudWatch utilization metrics.
+const MinResourceAge = 7 * 24 * time.Hour
+
+func isResourceTooYoung(createdAt *time.Time) bool {
+	if createdAt == nil || createdAt.IsZero() {
+		return false
+	}
+	return time.Since(*createdAt) < MinResourceAge
+}
+
+func resolveRegion(scannerRegion, fallback string) string {
+	if scannerRegion != "" {
+		return scannerRegion
+	}
+	return fallback
+}
+
+func regionFromAZ(scannerRegion, az string) string {
+	if scannerRegion != "" {
+		return scannerRegion
+	}
+	if len(az) >= 2 {
+		last := az[len(az)-1]
+		prev := az[len(az)-2]
+		if last >= 'a' && last <= 'z' && prev >= '0' && prev <= '9' {
+			return az[:len(az)-1]
+		}
+	}
+	if az != "" {
+		return az
+	}
+	return "regional"
+}
+
+func firstErr(errs ...error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // FinOpsResultParams defines parameters to construct a canonical FinOps model.ScanResult.
 type FinOpsResultParams struct {
 	ResourceID   string

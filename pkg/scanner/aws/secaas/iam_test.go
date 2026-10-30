@@ -28,6 +28,8 @@ type mockIAMApi struct {
 	getUserPolicyOutput            *iam.GetUserPolicyOutput
 	listRolesOutput                *iam.ListRolesOutput
 	listRolesErr                   error
+	getRoleOutput                  *iam.GetRoleOutput
+	getRoleErr                     error
 	getAccountPasswordPolicyOutput *iam.GetAccountPasswordPolicyOutput
 	getAccountPasswordPolicyErr    error
 	getCredentialReportOutput      *iam.GetCredentialReportOutput
@@ -122,6 +124,24 @@ func (m *mockIAMApi) ListRoles(ctx context.Context, params *iam.ListRolesInput, 
 				RoleLastUsed: &types.RoleLastUsed{
 					LastUsedDate: &now,
 				},
+			},
+		},
+	}, nil
+}
+
+func (m *mockIAMApi) GetRole(ctx context.Context, params *iam.GetRoleInput, optFns ...func(*iam.Options)) (*iam.GetRoleOutput, error) {
+	if m.getRoleErr != nil {
+		return nil, m.getRoleErr
+	}
+	if m.getRoleOutput != nil {
+		return m.getRoleOutput, nil
+	}
+	now := time.Now()
+	return &iam.GetRoleOutput{
+		Role: &types.Role{
+			RoleName: params.RoleName,
+			RoleLastUsed: &types.RoleLastUsed{
+				LastUsedDate: &now,
 			},
 		},
 	}, nil
@@ -909,6 +929,63 @@ func TestIAMScanner_Scan(t *testing.T) {
 				},
 			},
 			expectedRuleID:   "iam_policy_allows_privilege_escalation",
+			expectedSeverity: "INFO",
+			expectedStatus:   "PASS",
+			expectResult:     true,
+		},
+		{
+			name: "Deny Wildcard Policy Does Not Trigger Admin Privileges",
+			mockAPI: &mockIAMApi{
+				getAccountSummaryOutput: &iam.GetAccountSummaryOutput{
+					SummaryMap: map[string]int32{"AccountMFAEnabled": 1},
+				},
+				listUsersOutput: &iam.ListUsersOutput{
+					Users: []types.User{
+						{UserName: aws.String("deny-user")},
+					},
+				},
+				listAccessKeysOutput: &iam.ListAccessKeysOutput{},
+				listMFADevicesOutput: &iam.ListMFADevicesOutput{
+					MFADevices: []types.MFADevice{{}},
+				},
+				listUserPoliciesOutput: &iam.ListUserPoliciesOutput{
+					PolicyNames: []string{"DenyAll"},
+				},
+				getUserPolicyOutput: &iam.GetUserPolicyOutput{
+					PolicyDocument: aws.String(`{"Statement":[{"Effect":"Deny","Action":"*","Resource":"*"}]}`),
+				},
+			},
+			expectedRuleID:   "iam_customer_attached_policy_no_administrative_privileges",
+			expectedSeverity: "INFO",
+			expectedStatus:   "PASS",
+			expectResult:     true,
+		},
+		{
+			name: "Role Last Used Populated Via GetRole",
+			mockAPI: &mockIAMApi{
+				getAccountSummaryOutput: &iam.GetAccountSummaryOutput{
+					SummaryMap: map[string]int32{"AccountMFAEnabled": 1},
+				},
+				listUsersOutput: &iam.ListUsersOutput{},
+				listRolesOutput: &iam.ListRolesOutput{
+					Roles: []types.Role{
+						{
+							RoleName:     aws.String("ActiveRoleViaGetRole"),
+							Arn:          aws.String("arn:aws:iam::123456789012:role/ActiveRoleViaGetRole"),
+							RoleLastUsed: nil, // ListRoles omits RoleLastUsed
+						},
+					},
+				},
+				getRoleOutput: &iam.GetRoleOutput{
+					Role: &types.Role{
+						RoleName: aws.String("ActiveRoleViaGetRole"),
+						RoleLastUsed: &types.RoleLastUsed{
+							LastUsedDate: &now,
+						},
+					},
+				},
+			},
+			expectedRuleID:   "iam_role_unused",
 			expectedSeverity: "INFO",
 			expectedStatus:   "PASS",
 			expectResult:     true,

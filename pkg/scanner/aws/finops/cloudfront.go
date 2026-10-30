@@ -13,18 +13,32 @@ import (
 	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 )
 
+// CloudFrontListAPI defines the CloudFront API subset needed by CloudFrontScanner.
+type CloudFrontListAPI interface {
+	cloudfront.ListDistributionsAPIClient
+}
+
 type CloudFrontScanner struct {
-	cfClient *cloudfront.Client
-	cwClient *cloudwatch.Client
+	cfClient CloudFrontListAPI
+	cwClient CloudWatchMetricAPI
 }
 
 // Ensure CloudFrontScanner satisfies MetaScanner at compile time.
 var _ scanner.MetaScanner = (*CloudFrontScanner)(nil)
 
 func NewCloudFrontScanner(cfg aws.Config) *CloudFrontScanner {
+	cwCfg := cfg.Copy()
+	cwCfg.Region = "us-east-1"
 	return &CloudFrontScanner{
 		cfClient: cloudfront.NewFromConfig(cfg),
-		cwClient: cloudwatch.NewFromConfig(cfg),
+		cwClient: cloudwatch.NewFromConfig(cwCfg),
+	}
+}
+
+func NewCloudFrontScannerWithClients(cfClient CloudFrontListAPI, cwClient CloudWatchMetricAPI) *CloudFrontScanner {
+	return &CloudFrontScanner{
+		cfClient: cfClient,
+		cwClient: cwClient,
 	}
 }
 
@@ -76,24 +90,42 @@ func (s *CloudFrontScanner) Scan(ctx context.Context) ([]scanner.ScanResult, err
 			distID := aws.ToString(dist.Id)
 			domainName := aws.ToString(dist.DomainName)
 
-			reqs, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/CloudFront", "Requests", "DistributionId", distID, cwtypes.StatisticSum)
-			bytesDownloaded, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/CloudFront", "BytesDownloaded", "DistributionId", distID, cwtypes.StatisticSum)
+			cfDimensions := []cwtypes.Dimension{
+				{
+					Name:  aws.String("DistributionId"),
+					Value: aws.String(distID),
+				},
+				{
+					Name:  aws.String("Region"),
+					Value: aws.String("Global"),
+				},
+			}
+
+			reqs, reqErr := FetchCloudWatchMetricWithDimensions(ctx, s.cwClient, "AWS/CloudFront", "Requests", cfDimensions, cwtypes.StatisticSum)
+			bytesDownloaded, bytesErr := FetchCloudWatchMetricWithDimensions(ctx, s.cwClient, "AWS/CloudFront", "BytesDownloaded", cfDimensions, cwtypes.StatisticSum)
 
 			isOrphaned := false
-			if reqs == 0 {
-				isOrphaned = true
-			}
-
-			dataCost := (bytesDownloaded / (1024.0 * 1024.0 * 1024.0)) * 0.085
-			reqCost := (reqs / 10000.0) * 0.01
-			monthlyCost := dataCost + reqCost
+			monthlyCost := 0.0
 
 			metrics := map[string]interface{}{
-				"DistributionId":       distID,
-				"DomainName":           domainName,
-				"EstimatedMonthlyCost": monthlyCost,
-				"Requests_30Days":      reqs,
+				"DistributionId": distID,
+				"DomainName":     domainName,
 			}
+
+			if metricErr := firstErr(reqErr, bytesErr); metricErr != nil {
+				metrics["MetricFetchError"] = metricErr.Error()
+			} else {
+				dataCost := (bytesDownloaded / (1024.0 * 1024.0 * 1024.0)) * 0.085
+				reqCost := (reqs / 10000.0) * 0.01
+				monthlyCost = dataCost + reqCost
+				metrics["Requests_30Days"] = reqs
+
+				if !isResourceTooYoung(dist.LastModifiedTime) && reqs == 0 {
+					isOrphaned = true
+				}
+			}
+
+			metrics["EstimatedMonthlyCost"] = monthlyCost
 
 			if isOrphaned {
 				metrics["Recommendation"] = "Disable or delete unused CloudFront distribution"

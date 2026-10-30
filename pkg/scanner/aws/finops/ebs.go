@@ -23,6 +23,7 @@ type EBSClient interface {
 // EBSScanner checks for unattached EBS volumes and orphaned EBS Snapshots (AMIs).
 type EBSScanner struct {
 	client EBSClient
+	region string
 }
 
 // Ensure EBSScanner satisfies MetaScanner at compile time.
@@ -31,13 +32,19 @@ var _ scanner.MetaScanner = (*EBSScanner)(nil)
 func NewEBSScanner(cfg aws.Config) *EBSScanner {
 	return &EBSScanner{
 		client: ec2.NewFromConfig(cfg),
+		region: cfg.Region,
 	}
 }
 
 // NewEBSScannerWithClient allows injecting a custom or mock EC2 client.
-func NewEBSScannerWithClient(client EBSClient) *EBSScanner {
+func NewEBSScannerWithClient(client EBSClient, region ...string) *EBSScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
 	return &EBSScanner{
 		client: client,
+		region: r,
 	}
 }
 
@@ -109,7 +116,7 @@ func (s *EBSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   volID,
 				ResourceType: "EBS_VOLUME",
-				Region:       aws.ToString(volume.AvailabilityZone),
+				Region:       regionFromAZ(s.region, aws.ToString(volume.AvailabilityZone)),
 				RuleID:       RuleEBSVolumeUnused,
 				DisplayName:  volID,
 				IsOrphaned:   isOrphaned,
@@ -184,7 +191,7 @@ func (s *EBSScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   snapID,
 				ResourceType: "EBS_SNAPSHOT",
-				Region:       "global", // Snapshots are regional, but not bound to an AZ like volumes
+				Region:       resolveRegion(s.region, "regional"),
 				RuleID:       RuleEBSSnapshotOrphaned,
 				DisplayName:  snapID,
 				IsOrphaned:   isOrphaned,

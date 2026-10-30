@@ -378,10 +378,7 @@ func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 		return nil, fmt.Errorf("lambda client is not initialized")
 	}
 
-	limit := 0
-	if val, ok := ctx.Value("ResourceLimit").(int); ok {
-		limit = val
-	}
+	limit := scanner.GetResourceLimit(ctx)
 	processedCount := 0
 	var results []scanner.ScanResult
 
@@ -393,7 +390,7 @@ func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 	paginator := lambda.NewListFunctionsPaginator(s.lambdaClient, &lambda.ListFunctionsInput{})
 
 	for paginator.HasMorePages() {
-		if limit > 0 && processedCount >= limit {
+		if scanner.ShouldStop(ctx, processedCount, limit) {
 			break
 		}
 		page, err := paginator.NextPage(ctx)
@@ -402,7 +399,7 @@ func (s *LambdaScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) 
 		}
 
 		for _, fn := range page.Functions {
-			if limit > 0 && processedCount >= limit {
+			if scanner.ShouldStop(ctx, processedCount, limit) {
 				break
 			}
 			processedCount++

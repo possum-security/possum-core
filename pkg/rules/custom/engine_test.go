@@ -115,3 +115,140 @@ condition: "tags.Team != ''"
 	assert.Equal(t, 1, count)
 	assert.Len(t, engine.Rules(), 1)
 }
+
+func TestEngine_RichExpressions_BooleansComparisonsMethodsAndNestedMaps(t *testing.T) {
+	ctx := ResourceContext{
+		ResourceID:   "arn:aws:rds:us-east-1:123456789012:db:prod-orders-db",
+		ResourceType: "RDS",
+		Region:       "us-east-1",
+		Tags: map[string]string{
+			"env":         "production",
+			"cost-center": "fin-104",
+			"owner":       "platform-team@example.com",
+		},
+		Properties: map[string]interface{}{
+			"storage_size":        250,
+			"backup_retention":    14,
+			"publicly_accessible": false,
+			"encryption": map[string]interface{}{
+				"enabled":    true,
+				"kms_key_id": "arn:aws:kms:us-east-1:123456789012:key/abcd-1234",
+			},
+			"engine": "aurora-postgresql",
+		},
+	}
+
+	tests := []struct {
+		name     string
+		expr     string
+		expected bool
+	}{
+		{
+			name:     "nested tag bracket access and && operator",
+			expr:     "resource.tags['env'] == 'production' && resource.tags['cost-center'].startsWith('fin-')",
+			expected: true,
+		},
+		{
+			name:     "boolean and/or with parentheses and comparisons",
+			expr:     "(resource.tags['env'] == 'staging' or resource.tags['env'] == 'production') and properties.storage_size >= 100 and properties.backup_retention > 7",
+			expected: true,
+		},
+		{
+			name:     "negation with ! and nested map access",
+			expr:     "!properties.publicly_accessible && properties.encryption.enabled == true && properties.encryption['kms_key_id'].startsWith('arn:aws:kms:')",
+			expected: true,
+		},
+		{
+			name:     "contains method on string field",
+			expr:     "properties.engine.contains('postgres') && resource.tags['owner'].contains('@example.com')",
+			expected: true,
+		},
+		{
+			name:     "in and not in list operators",
+			expr:     "region in ['us-east-1', 'us-west-2'] && resource.tags['env'] not in ['dev', 'sandbox']",
+			expected: true,
+		},
+		{
+			name:     "numeric < and <= comparisons",
+			expr:     "properties.backup_retention <= 30 && properties.backup_retention < 7",
+			expected: false,
+		},
+		{
+			name:     "|| operator where right branch succeeds",
+			expr:     "resource.tags['env'] == 'dev' || properties.encryption.enabled == true",
+			expected: true,
+		},
+	}
+
+	engine := NewEngine()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rule := Rule{
+				ID:           "test_rule",
+				ResourceType: "RDS",
+				Condition:    tc.expr,
+			}
+			passed, err := engine.EvaluateRule(rule, ctx)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, passed)
+		})
+	}
+}
+
+func TestEngine_CompilationAndEvaluationErrorsSurfaced(t *testing.T) {
+	// 1. Invalid expression syntax must fail LoadRule
+	badYAML := `
+id: broken_rule
+resource_type: S3
+severity: HIGH
+condition: "resource.tags['env'] === 'prod'"
+`
+	_, err := LoadRule(strings.NewReader(badYAML))
+	require.Error(t, err, "LoadRule must fail on invalid operator '==='")
+
+	// 2. Unclosed string literal must fail LoadRule
+	unclosedYAML := `
+id: unclosed_quote
+resource_type: S3
+condition: "resource.tags['env] == 'prod'"
+`
+	_, err = LoadRule(strings.NewReader(unclosedYAML))
+	require.Error(t, err, "LoadRule must fail on unclosed quote")
+
+	// 3. Unknown method call must fail validation
+	unknownMethodRule := Rule{
+		ID:        "unknown_method",
+		Condition: "resource.tags['env'].magicMatch('prod')",
+	}
+	require.Error(t, ValidateRule(unknownMethodRule))
+
+	// 4. LoadDirectory must surface errors when a directory contains an invalid rule file
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "bad.yaml"), []byte(badYAML), 0644))
+	engine := NewEngine()
+	_, err = engine.LoadDirectory(tmpDir)
+	require.Error(t, err, "LoadDirectory must surface rule validation error")
+
+	// 5. Evaluate must surface runtime evaluation errors (e.g. numeric comparison on non-numeric value)
+	evalEngine := NewEngine(Rule{
+		ID:           "bad_numeric_compare",
+		ResourceType: "S3",
+		Condition:    "resource.tags['env'] > 100",
+	})
+	_, evalErr := evalEngine.Evaluate(ResourceContext{
+		ResourceID:   "bucket-1",
+		ResourceType: "S3",
+		Tags:         map[string]string{"env": "non-numeric"},
+	})
+	require.Error(t, evalErr, "Evaluate must surface numeric comparison error")
+	assert.NotEmpty(t, evalEngine.LastErrors())
+
+	// 6. Verify docs/examples/custom-rules.yaml loads and evaluates cleanly
+	exampleFile, err := os.Open("../../../docs/examples/custom-rules.yaml")
+	if err == nil {
+		defer exampleFile.Close()
+		exRule, err := LoadRule(exampleFile)
+		require.NoError(t, err)
+		assert.Equal(t, "custom_prod_s3_governance", exRule.ID)
+	}
+}

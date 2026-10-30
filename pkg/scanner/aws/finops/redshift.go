@@ -12,9 +12,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/redshift"
 )
 
+// RedshiftDescribeAPI defines the Redshift API subset needed by RedshiftScanner.
+type RedshiftDescribeAPI interface {
+	redshift.DescribeClustersAPIClient
+}
+
 type RedshiftScanner struct {
-	rsClient *redshift.Client
-	cwClient *cloudwatch.Client
+	rsClient RedshiftDescribeAPI
+	cwClient CloudWatchMetricAPI
+	region   string
 }
 
 // Ensure RedshiftScanner satisfies MetaScanner at compile time.
@@ -24,6 +30,19 @@ func NewRedshiftScanner(cfg aws.Config) *RedshiftScanner {
 	return &RedshiftScanner{
 		rsClient: redshift.NewFromConfig(cfg),
 		cwClient: cloudwatch.NewFromConfig(cfg),
+		region:   cfg.Region,
+	}
+}
+
+func NewRedshiftScannerWithClients(rsClient RedshiftDescribeAPI, cwClient CloudWatchMetricAPI, region ...string) *RedshiftScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &RedshiftScanner{
+		rsClient: rsClient,
+		cwClient: cwClient,
+		region:   r,
 	}
 }
 
@@ -70,13 +89,8 @@ func (s *RedshiftScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error
 
 			clusterID := aws.ToString(cluster.ClusterIdentifier)
 
-			cpu, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Redshift", "CPUUtilization", "ClusterIdentifier", clusterID, cwtypes.StatisticAverage)
-			conns, _ := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Redshift", "DatabaseConnections", "ClusterIdentifier", clusterID, cwtypes.StatisticMaximum)
-
-			isOrphaned := false
-			if cpu < 5.0 && conns == 0 {
-				isOrphaned = true
-			}
+			cpu, cpuErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Redshift", "CPUUtilization", "ClusterIdentifier", clusterID, cwtypes.StatisticAverage)
+			conns, connErr := FetchCloudWatchMetric(ctx, s.cwClient, "AWS/Redshift", "DatabaseConnections", "ClusterIdentifier", clusterID, cwtypes.StatisticMaximum)
 
 			nodeType := aws.ToString(cluster.NodeType)
 			numNodes := float64(aws.ToInt32(cluster.NumberOfNodes))
@@ -99,11 +113,21 @@ func (s *RedshiftScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error
 			}
 			monthlyCost := hourlyRate * numNodes * 730
 
+			isOrphaned := false
 			metrics := map[string]interface{}{
 				"ClusterIdentifier":    clusterID,
 				"EstimatedMonthlyCost": monthlyCost,
-				"AverageCPU_7Days":     cpu,
-				"MaxConnections_7Days": conns,
+			}
+
+			if metricErr := firstErr(cpuErr, connErr); metricErr != nil {
+				metrics["MetricFetchError"] = metricErr.Error()
+			} else {
+				metrics["AverageCPU_7Days"] = cpu
+				metrics["MaxConnections_7Days"] = conns
+
+				if !isResourceTooYoung(cluster.ClusterCreateTime) && cpu < 5.0 && conns == 0 {
+					isOrphaned = true
+				}
 			}
 
 			if isOrphaned {
@@ -118,7 +142,7 @@ func (s *RedshiftScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error
 			results = append(results, BuildFinOpsResult(FinOpsResultParams{
 				ResourceID:   clusterID,
 				ResourceType: "Redshift",
-				Region:       "regional",
+				Region:       resolveRegion(s.region, "regional"),
 				RuleID:       RuleRedshiftClusterIdle,
 				DisplayName:  clusterID,
 				IsOrphaned:   isOrphaned,
