@@ -277,5 +277,3 @@ func TestRDSScanner_Snapshots_AttributesError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, results)
 }
-
-

@@ -265,5 +265,3 @@ func TestWAFv2Scanner_ResourceLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
 }
-
-

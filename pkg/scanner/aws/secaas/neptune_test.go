@@ -241,8 +241,6 @@ func TestNeptuneScanner_ResourceLimit(t *testing.T) {
 	assert.Equal(t, "neptune-1", results[0].ResourceID)
 }
 
-
-
 func TestNeptuneScanner_ClusterSnapshot_Public_FAIL(t *testing.T) {
 	snapID := "neptune-snap-public-01"
 	snapArn := "arn:aws:rds:us-east-1:123456789012:snapshot:neptune-snap-public-01"

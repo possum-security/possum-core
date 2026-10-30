@@ -240,5 +240,3 @@ func TestRedshiftScanner_ResourceLimit(t *testing.T) {
 	assert.Len(t, results, 3)
 	assert.Equal(t, "cluster-1", results[0].ResourceID)
 }
-
-

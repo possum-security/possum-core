@@ -955,4 +955,3 @@ func TestCLI_ScanAWS_ValidationErrors(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid config file")
 }
-

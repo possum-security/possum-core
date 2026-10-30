@@ -303,5 +303,3 @@ func TestKafkaScanner_ListError(t *testing.T) {
 	assert.Nil(t, results)
 	assert.Contains(t, err.Error(), "failed to list MSK clusters")
 }
-
-

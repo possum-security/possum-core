@@ -76,8 +76,6 @@ func (m *mockAPIGatewayV2Client) GetAuthorizers(ctx context.Context, params *api
 	return m.getAuthorizersOutput, nil
 }
 
-
-
 func TestAPIGatewayScanner_Compliant_V1AndV2(t *testing.T) {
 	v1Client := &mockAPIGatewayClient{
 		getRestApisOutput: &apigateway.GetRestApisOutput{

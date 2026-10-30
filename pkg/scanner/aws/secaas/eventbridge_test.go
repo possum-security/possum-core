@@ -296,5 +296,3 @@ func TestEventBridgeScanner_ListError(t *testing.T) {
 	assert.Nil(t, results)
 	assert.Contains(t, err.Error(), "failed to list EventBridge event buses")
 }
-
-

@@ -302,4 +302,3 @@ func TestSuppression_MetadataDisplayNameAndGlobSlash(t *testing.T) {
 	}
 	assert.True(t, suppGlobSlash.Matches(res))
 }
-

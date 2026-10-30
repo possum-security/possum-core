@@ -136,5 +136,3 @@ func TestSecurityHubScanner_GlobalRegion(t *testing.T) {
 	assert.Equal(t, "securityhub-global", results[0].ResourceID)
 	assert.Equal(t, "global", results[0].Region)
 }
-
-

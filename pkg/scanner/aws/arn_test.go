@@ -155,4 +155,3 @@ func TestARN_StandardizeResultsARN(t *testing.T) {
 	assert.Equal(t, "123456789012", standardized[0].AccountID)
 	assert.Equal(t, "arn:aws:ec2:us-east-1:123456789012:volume/vol-12345", standardized[0].ResourceID)
 }
-

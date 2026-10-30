@@ -375,4 +375,3 @@ func TestEngine_ValidationErrorsAndEdgeCases(t *testing.T) {
 	_, err := engine.LoadDirectory("/non/existent/path/123456")
 	require.Error(t, err)
 }
-
