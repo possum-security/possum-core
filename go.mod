@@ -56,7 +56,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sns v1.47.5
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.4
-	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.83.5
+	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.83.6
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.12.1
