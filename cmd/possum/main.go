@@ -35,12 +35,20 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 }
 
-func main() {
+func runMain(args []string) int {
+	rootCmd.SetArgs(args)
 	if err := rootCmd.Execute(); err != nil {
 		if errors.Is(err, model.ErrThresholdExceeded) {
-			os.Exit(1)
+			return 1
 		}
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		return 2
+	}
+	return 0
+}
+
+func main() {
+	if code := runMain(os.Args[1:]); code != 0 {
+		os.Exit(code)
 	}
 }

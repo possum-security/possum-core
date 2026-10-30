@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Possum Cloud Attack Graph &amp; Audit Report</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --critical: #ef4444;
+      --high: #f97316;
+      --medium: #eab308;
+      --low: #3b82f6;
+      --pass: #22c55e;
+      --suppressed: #a855f7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; padding: 24px; }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; }
+    .header h1 { font-size: 24px; display: flex; align-items: center; gap: 8px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .stat-value { font-size: 28px; font-weight: bold; }
+    .stat-label { font-size: 13px; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr; gap: 24px; }
+    @media (min-width: 1024px) { .grid-2 { grid-template-columns: 1.2fr 1fr; } }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; overflow: hidden; }
+    .card h2 { font-size: 18px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .table-container { max-height: 500px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: #131d31; position: sticky; top: 0; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .badge-CRITICAL { background: rgba(239, 68, 68, 0.2); color: var(--critical); border: 1px solid var(--critical); }
+    .badge-HIGH { background: rgba(249, 115, 22, 0.2); color: var(--high); border: 1px solid var(--high); }
+    .badge-MEDIUM { background: rgba(234, 179, 8, 0.2); color: var(--medium); border: 1px solid var(--medium); }
+    .badge-LOW { background: rgba(59, 130, 246, 0.2); color: var(--low); border: 1px solid var(--low); }
+    .badge-PASS { background: rgba(34, 197, 94, 0.2); color: var(--pass); border: 1px solid var(--pass); }
+    .badge-SUPPRESSED { background: rgba(168, 85, 247, 0.2); color: var(--suppressed); border: 1px solid var(--suppressed); }
+    .graph-canvas { width: 100%; height: 480px; background: #090d16; border: 1px solid var(--border); border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🐾 Possum Core — Cloud Topology & Audit Report</h1>
+    <div style="color: var(--text-muted); font-size: 13px;">Generated: 2026-01-15T10:00:00Z</div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-value" style="color: var(--critical);">1</div><div class="stat-label">Critical Issues</div></div>
+    <div class="stat-card"><div class="stat-value" style="color: var(--high);">1</div><div class="stat-label">High Issues</div></div>
+    <div class="stat-card"><div class="stat-value" style="color: var(--medium);">1</div><div class="stat-label">Medium / Low</div></div>
+    <div class="stat-card"><div class="stat-value" style="color: var(--accent);">$38.50/mo</div><div class="stat-label">Monthly Waste</div></div>
+    <div class="stat-card"><div class="stat-value" style="color: var(--pass);">1</div><div class="stat-label">Passed Checks</div></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2>Security & FinOps Findings</h2>
+      <div class="table-container">
+        <table>
+          <thead><tr><th>Status</th><th>Severity</th><th>Rule</th><th>Resource</th><th>Waste</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-PASS">PASS</span></td><td><span class="badge badge-CRITICAL">CRITICAL</span></td><td><strong>iam_root_mfa_enabled</strong></td><td style="word-break: break-all;">arn:aws:iam::123456789012:root</td><td>-</td></tr>
+            <tr><td><span class="badge badge-FAIL">FAIL</span></td><td><span class="badge badge-CRITICAL">CRITICAL</span></td><td><strong>s3_bucket_level_public_access_block</strong></td><td style="word-break: break-all;">arn:aws:s3:::production-customer-data</td><td>-</td></tr>
+            <tr><td><span class="badge badge-FAIL">FAIL</span></td><td><span class="badge badge-HIGH">HIGH</span></td><td><strong>ec2_securitygroup_allow_ingress_from_internet_to_any_port</strong></td><td style="word-break: break-all;">arn:aws:ec2:us-east-1:123456789012:security-group/sg-0123456789abcdef0</td><td>-</td></tr>
+            <tr><td><span class="badge badge-FAIL">FAIL</span></td><td><span class="badge badge-MEDIUM">MEDIUM</span></td><td><strong>ebs_volume_unused_attached</strong></td><td style="word-break: break-all;">arn:aws:ec2:us-east-1:123456789012:volume/vol-0987654321fedcba0</td><td>$38.50/mo</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Attack Surface Topology Graph (Offline)</h2>
+      <svg class="graph-canvas" id="topo-svg" viewBox="0 0 600 480">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+          </marker>
+        </defs>
+        <!-- Threat Actor / Internet Node -->
+        <circle cx="300" cy="60" r="28" fill="#ef4444" opacity="0.9" />
+        <text x="300" y="65" fill="#fff" font-size="12" font-weight="bold" text-anchor="middle">INTERNET</text>
+        <line x1="300" y1="88" x2="448.0" y2="260.0" stroke="#475569" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow)" />
+        <circle cx="448.0" cy="260.0" r="22" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+        <text x="448.0" y="294.0" fill="#f8fafc" font-size="10" text-anchor="middle">arn:aws:s3..</text>
+        <line x1="300" y1="88" x2="441.9" y2="315.5" stroke="#475569" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow)" />
+        <circle cx="441.9" cy="315.5" r="22" fill="#f97316" stroke="#ffffff" stroke-width="1.5" />
+        <text x="441.9" y="349.5" fill="#f8fafc" font-size="10" text-anchor="middle">arn:aws:ec..</text>
+        <line x1="300" y1="88" x2="399.6" y2="360.1" stroke="#475569" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow)" />
+        <circle cx="399.6" cy="360.1" r="22" fill="#3b82f6" stroke="#ffffff" stroke-width="1.5" />
+        <text x="399.6" y="394.1" fill="#f8fafc" font-size="10" text-anchor="middle">arn:aws:ec..</text>
+      </svg>
+    </div>
+  </div>
+
+  <script>
+    const scanData = [{"resource_id":"arn:aws:iam::123456789012:root","resource_type":"AWS::IAM::User","region":"global","account_id":"123456789012","rule_id":"iam_root_mfa_enabled","title":"Root MFA Enabled","severity":"CRITICAL","status":"PASS","category":"SECURITY","description":"MFA is enabled on AWS root account.","evaluated_at":"2026-01-15T10:00:00Z"},{"resource_id":"arn:aws:s3:::production-customer-data","resource_type":"AWS::S3::Bucket","region":"us-east-1","account_id":"123456789012","rule_id":"s3_bucket_level_public_access_block","title":"S3 bucket public access block disabled","severity":"CRITICAL","status":"FAIL","category":"SECURITY","description":"S3 Block Public Access is disabled on bucket.","remediation":"aws s3api put-public-access-block --bucket production-customer-data","evaluated_at":"2026-01-15T10:00:00Z","metrics":{"File":"terraform/s3.tf","Line":42}},{"resource_id":"arn:aws:ec2:us-east-1:123456789012:security-group/sg-0123456789abcdef0","resource_type":"AWS::EC2::SecurityGroup","region":"us-east-1","account_id":"123456789012","rule_id":"ec2_securitygroup_allow_ingress_from_internet_to_any_port","title":"Security group allows ingress from internet to any port","severity":"HIGH","status":"FAIL","category":"SECURITY","description":"Security group has unrestricted ingress rule from 0.0.0.0/0.","remediation":"Restrict security group ingress to specific IP CIDRs or security groups.","evaluated_at":"2026-01-15T10:00:00Z","metrics":{"File":"terraform/security_groups.tf","Line":105}},{"resource_id":"arn:aws:ec2:us-east-1:123456789012:volume/vol-0987654321fedcba0","resource_type":"AWS::EC2::Volume","region":"us-east-1","account_id":"123456789012","rule_id":"ebs_volume_unused_attached","title":"Unattached EBS Volume Generating Waste","severity":"MEDIUM","status":"FAIL","category":"FINOPS","is_orphaned":true,"cost_waste_monthly":38.5,"description":"EBS volume is not attached to any EC2 instance.","remediation":"Delete unattached EBS volume or snapshot and archive.","evaluated_at":"2026-01-15T10:00:00Z"}];
+  </script>
+</body>
+</html>

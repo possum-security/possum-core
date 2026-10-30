@@ -1,0 +1,156 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "possum",
+          "version": "v0.1.0-dev",
+          "informationUri": "https://possum.io",
+          "rules": [
+            {
+              "id": "s3_bucket_level_public_access_block",
+              "name": "s3 bucket level public access block",
+              "shortDescription": {
+                "text": "S3 bucket public access block disabled"
+              },
+              "fullDescription": {
+                "text": "S3 Block Public Access is disabled on bucket."
+              },
+              "helpUri": "https://possum.io/rules/s3_bucket_level_public_access_block",
+              "properties": {
+                "security-severity": "9.0",
+                "tags": [
+                  "security",
+                  "security"
+                ],
+                "severity": "CRITICAL",
+                "category": "SECURITY",
+                "remediation": "aws s3api put-public-access-block --bucket production-customer-data"
+              }
+            },
+            {
+              "id": "ec2_securitygroup_allow_ingress_from_internet_to_any_port",
+              "name": "ec2 securitygroup allow ingress from internet to any port",
+              "shortDescription": {
+                "text": "Security group allows ingress from internet to any port"
+              },
+              "fullDescription": {
+                "text": "Security group has unrestricted ingress rule from 0.0.0.0/0."
+              },
+              "helpUri": "https://possum.io/rules/ec2_securitygroup_allow_ingress_from_internet_to_any_port",
+              "properties": {
+                "security-severity": "7.0",
+                "tags": [
+                  "security",
+                  "security"
+                ],
+                "severity": "HIGH",
+                "category": "SECURITY",
+                "remediation": "Restrict security group ingress to specific IP CIDRs or security groups."
+              }
+            },
+            {
+              "id": "ebs_volume_unused_attached",
+              "name": "ebs volume unused attached",
+              "shortDescription": {
+                "text": "Unattached EBS Volume Generating Waste"
+              },
+              "fullDescription": {
+                "text": "EBS volume is not attached to any EC2 instance."
+              },
+              "helpUri": "https://possum.io/rules/ebs_volume_unused_attached",
+              "properties": {
+                "security-severity": "4.0",
+                "tags": [
+                  "security",
+                  "finops"
+                ],
+                "severity": "MEDIUM",
+                "category": "FINOPS",
+                "remediation": "Delete unattached EBS volume or snapshot and archive.",
+                "cost_waste_monthly": 38.5
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "s3_bucket_level_public_access_block",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "S3 Block Public Access is disabled on bucket.\nRemediation: aws s3api put-public-access-block --bucket production-customer-data"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "terraform/s3.tf"
+                },
+                "region": {
+                  "startLine": 42
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "48aa401b4f44d14de48ed4b9ca97cadc5848e78347bf47e30304476e5f528252"
+          }
+        },
+        {
+          "ruleId": "ec2_securitygroup_allow_ingress_from_internet_to_any_port",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "Security group has unrestricted ingress rule from 0.0.0.0/0.\nRemediation: Restrict security group ingress to specific IP CIDRs or security groups."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "terraform/security_groups.tf"
+                },
+                "region": {
+                  "startLine": 105
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "02931c5ec408804cbbab1fac3f306da4ac3689c66b443a297fdd0ad375ad6fee"
+          }
+        },
+        {
+          "ruleId": "ebs_volume_unused_attached",
+          "ruleIndex": 2,
+          "level": "warning",
+          "message": {
+            "text": "EBS volume is not attached to any EC2 instance.\nRemediation: Delete unattached EBS volume or snapshot and archive."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "arn/aws/ec2/us-east-1/123456789012/volume/vol-0987654321fedcba0"
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "arn:aws:ec2:us-east-1:123456789012:volume/vol-0987654321fedcba0",
+                  "fullyQualifiedName": "arn:aws:ec2:us-east-1:123456789012:volume/vol-0987654321fedcba0",
+                  "kind": "AWS::EC2::Volume"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "a073c01ef461b1ac4b026eaf6e35a844170ba20aa11f4509d2858bd112089f96"
+          }
+        }
+      ]
+    }
+  ]
+}

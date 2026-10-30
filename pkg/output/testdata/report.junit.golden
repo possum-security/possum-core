@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="possum" tests="4" failures="3" errors="0">
+  <testsuite name="possum-cloud-scan" tests="4" failures="3" errors="0">
+    <testcase name="[iam_root_mfa_enabled] arn:aws:iam::123456789012:root" classname="possum.SECURITY.AWS::IAM::User" time="0.010"></testcase>
+    <testcase name="[s3_bucket_level_public_access_block] arn:aws:s3:::production-customer-data" classname="possum.SECURITY.AWS::S3::Bucket" time="0.010">
+      <failure message="S3 Block Public Access is disabled on bucket." type="CRITICAL">Severity: CRITICAL&#xA;Category: SECURITY&#xA;Remediation: aws s3api put-public-access-block --bucket production-customer-data</failure>
+    </testcase>
+    <testcase name="[ec2_securitygroup_allow_ingress_from_internet_to_any_port] arn:aws:ec2:us-east-1:123456789012:security-group/sg-0123456789abcdef0" classname="possum.SECURITY.AWS::EC2::SecurityGroup" time="0.010">
+      <failure message="Security group has unrestricted ingress rule from 0.0.0.0/0." type="HIGH">Severity: HIGH&#xA;Category: SECURITY&#xA;Remediation: Restrict security group ingress to specific IP CIDRs or security groups.</failure>
+    </testcase>
+    <testcase name="[ebs_volume_unused_attached] arn:aws:ec2:us-east-1:123456789012:volume/vol-0987654321fedcba0" classname="possum.FINOPS.AWS::EC2::Volume" time="0.010">
+      <failure message="EBS volume is not attached to any EC2 instance." type="MEDIUM">Severity: MEDIUM&#xA;Category: FINOPS&#xA;Remediation: Delete unattached EBS volume or snapshot and archive.</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
