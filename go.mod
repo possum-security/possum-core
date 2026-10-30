@@ -34,7 +34,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.63.4
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.55.4
-	github.com/aws/aws-sdk-go-v2/service/glue v1.171.1
+	github.com/aws/aws-sdk-go-v2/service/glue v1.172.0
 	github.com/aws/aws-sdk-go-v2/service/guardduty v1.101.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.64.4
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.65.5
