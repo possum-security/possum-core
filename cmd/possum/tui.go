@@ -1,11 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/possum-security/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/output"
 	"github.com/possum-security/possum-core/pkg/tui"
 	"github.com/spf13/cobra"
 )
@@ -21,22 +21,19 @@ Allows rapid severity filtering, scrolling, and deep-dive inspection of remediat
 
 func runTUI(cmd *cobra.Command, args []string) error {
 	var results []model.ScanResult
+	var err error
 
 	if len(args) > 0 {
-		f, err := os.Open(args[0])
+		results, err = output.LoadResultsFromFile(args[0])
 		if err != nil {
-			return fmt.Errorf("failed to open findings file: %w", err)
-		}
-		defer f.Close()
-
-		if err := json.NewDecoder(f).Decode(&results); err != nil {
-			return fmt.Errorf("failed to decode findings JSON: %w", err)
+			return fmt.Errorf("failed to load findings file: %w", err)
 		}
 	} else {
 		// Read from stdin if piped
 		stat, _ := os.Stdin.Stat()
 		if (stat.Mode() & os.ModeCharDevice) == 0 {
-			if err := json.NewDecoder(os.Stdin).Decode(&results); err != nil {
+			results, err = output.LoadResults(os.Stdin)
+			if err != nil {
 				return fmt.Errorf("failed to decode findings from stdin: %w", err)
 			}
 		} else {

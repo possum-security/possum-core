@@ -2,9 +2,12 @@ package diff
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/possum-security/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -81,4 +84,37 @@ func TestDiff_Compare(t *testing.T) {
 	assert.Contains(t, md, "sg-new-leak")
 	assert.Contains(t, md, "old-bucket")
 	assert.Contains(t, md, "+$3.65/mo waste")
+}
+
+func TestDiff_LoadResultsFromFile_BothShapes(t *testing.T) {
+	tmpDir := t.TempDir()
+	findings := []model.ScanResult{
+		{
+			RuleID:     "s3_bucket_level_public_access_block",
+			ResourceID: "my-bucket",
+			Region:     "us-east-1",
+			Status:     model.StatusFail,
+			Severity:   model.SeverityHigh,
+		},
+	}
+
+	envPath := filepath.Join(tmpDir, "envelope.json")
+	var envBuf bytes.Buffer
+	require.NoError(t, output.NewJSONFormatter(true).Format(&envBuf, findings))
+	require.NoError(t, os.WriteFile(envPath, envBuf.Bytes(), 0644))
+
+	arrPath := filepath.Join(tmpDir, "array.json")
+	var arrBuf bytes.Buffer
+	require.NoError(t, output.NewJSONFormatter(false).Format(&arrBuf, findings))
+	require.NoError(t, os.WriteFile(arrPath, arrBuf.Bytes(), 0644))
+
+	loadedEnv, err := LoadResultsFromFile(envPath)
+	require.NoError(t, err)
+	require.Len(t, loadedEnv, 1)
+	assert.Equal(t, "my-bucket", loadedEnv[0].ResourceID)
+
+	loadedArr, err := LoadResultsFromFile(arrPath)
+	require.NoError(t, err)
+	require.Len(t, loadedArr, 1)
+	assert.Equal(t, "my-bucket", loadedArr[0].ResourceID)
 }

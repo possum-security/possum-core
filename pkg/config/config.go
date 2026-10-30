@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -49,6 +50,7 @@ type OutputConfig struct {
 // FinOpsConfig specifies FinOps heuristics and thresholds.
 type FinOpsConfig struct {
 	ECRRetentionDays int     `yaml:"ecr_retention_days" json:"ecr_retention_days"`
+	FlagUntaggedECR  bool    `yaml:"flag_untagged_ecr" json:"flag_untagged_ecr"`
 	IdleCPUThreshold float64 `yaml:"idle_cpu_threshold" json:"idle_cpu_threshold"`
 }
 
@@ -66,8 +68,24 @@ func (s ScanConfig) TimeoutDuration(defaultTimeout time.Duration) time.Duration 
 
 // Load reads and parses configuration from an io.Reader.
 func Load(r io.Reader) (*Config, error) {
-	var cfg Config
-	dec := yaml.NewDecoder(r)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read configuration: %w", err)
+	}
+
+	cfg := Config{
+		FinOps: FinOpsConfig{
+			ECRRetentionDays: 180,
+			FlagUntaggedECR:  true,
+		},
+	}
+
+	if len(bytes.TrimSpace(data)) == 0 {
+		return &cfg, nil
+	}
+
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
 	if err := dec.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to decode configuration yaml: %w", err)
 	}

@@ -1,6 +1,8 @@
 package output
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,15 +38,29 @@ type SARIFDriver struct {
 	Rules          []SARIFRuleEntry `json:"rules"`
 }
 
+// SARIFRuleProperties defines GitHub Code Scanning and SARIF rule metadata properties.
+type SARIFRuleProperties struct {
+	SecuritySeverity string   `json:"security-severity,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
+	Severity         string   `json:"severity,omitempty"`
+	Category         string   `json:"category,omitempty"`
+	Remediation      string   `json:"remediation,omitempty"`
+	CostWasteMo      float64  `json:"cost_waste_monthly,omitempty"`
+}
+
+type sarifRuleProperties = SARIFRuleProperties
+
 // SARIFRuleEntry defines metadata for an individual rule.
 type SARIFRuleEntry struct {
-	ID               string           `json:"id"`
-	Name             string           `json:"name,omitempty"`
-	ShortDescription SARIFDescription `json:"shortDescription"`
-	FullDescription  SARIFDescription `json:"fullDescription,omitempty"`
-	HelpURI          string           `json:"helpUri,omitempty"`
-	Properties       map[string]any   `json:"properties,omitempty"`
+	ID               string               `json:"id"`
+	Name             string               `json:"name,omitempty"`
+	ShortDescription SARIFDescription     `json:"shortDescription"`
+	FullDescription  SARIFDescription     `json:"fullDescription,omitempty"`
+	HelpURI          string               `json:"helpUri,omitempty"`
+	Properties       *SARIFRuleProperties `json:"properties,omitempty"`
 }
+
+type sarifRule = SARIFRuleEntry
 
 // SARIFDescription contains text content for descriptions.
 type SARIFDescription struct {
@@ -53,12 +69,15 @@ type SARIFDescription struct {
 
 // SARIFResult represents an individual finding reported by SARIF.
 type SARIFResult struct {
-	RuleID    string          `json:"ruleId"`
-	RuleIndex int             `json:"ruleIndex"`
-	Level     string          `json:"level"`
-	Message   SARIFMessage    `json:"message"`
-	Locations []SARIFLocation `json:"locations,omitempty"`
+	RuleID              string            `json:"ruleId"`
+	RuleIndex           int               `json:"ruleIndex"`
+	Level               string            `json:"level"`
+	Message             SARIFMessage      `json:"message"`
+	Locations           []SARIFLocation   `json:"locations,omitempty"`
+	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
 }
+
+type sarifResult = SARIFResult
 
 // SARIFMessage represents the result message.
 type SARIFMessage struct {
@@ -67,17 +86,33 @@ type SARIFMessage struct {
 
 // SARIFLocation describes the location where the finding occurred.
 type SARIFLocation struct {
-	PhysicalLocation SARIFPhysicalLocation `json:"physicalLocation"`
+	PhysicalLocation SARIFPhysicalLocation  `json:"physicalLocation"`
+	LogicalLocations []SARIFLogicalLocation `json:"logicalLocations,omitempty"`
 }
 
-// SARIFPhysicalLocation defines the artifact URI.
+// SARIFPhysicalLocation defines the artifact URI and optional source region.
 type SARIFPhysicalLocation struct {
 	ArtifactLocation SARIFArtifactLocation `json:"artifactLocation"`
+	Region           *SARIFRegion          `json:"region,omitempty"`
 }
 
 // SARIFArtifactLocation contains the URI identifier.
 type SARIFArtifactLocation struct {
 	URI string `json:"uri"`
+}
+
+// SARIFRegion represents a line/column region in a source file.
+type SARIFRegion struct {
+	StartLine int `json:"startLine,omitempty"`
+}
+
+type sarifRegion = SARIFRegion
+
+// SARIFLogicalLocation represents a logical cloud resource location (e.g. ARN).
+type SARIFLogicalLocation struct {
+	Name               string `json:"name,omitempty"`
+	FullyQualifiedName string `json:"fullyQualifiedName,omitempty"`
+	Kind               string `json:"kind,omitempty"`
 }
 
 // SARIFFormatter formats results as OASIS SARIF v2.1.0.
@@ -88,15 +123,77 @@ func NewSARIFFormatter() *SARIFFormatter {
 	return &SARIFFormatter{}
 }
 
+func securitySeverityScore(sev model.Severity) string {
+	switch strings.ToUpper(string(sev)) {
+	case model.SeverityCritical:
+		return "9.0"
+	case model.SeverityHigh:
+		return "7.0"
+	case model.SeverityMedium:
+		return "4.0"
+	case model.SeverityLow:
+		return "2.0"
+	case model.SeverityInfo:
+		return "1.0"
+	default:
+		return "1.0"
+	}
+}
+
+func extractFileAndLine(r model.ScanResult) (string, int) {
+	checkMap := func(m map[string]interface{}) (string, int) {
+		var file string
+		var line int
+		if f, ok := m["File"].(string); ok && f != "" {
+			file = f
+		} else if f, ok := m["file"].(string); ok && f != "" {
+			file = f
+		}
+		switch l := m["Line"].(type) {
+		case int:
+			line = l
+		case float64:
+			line = int(l)
+		case int64:
+			line = int(l)
+		}
+		if line == 0 {
+			switch l := m["line"].(type) {
+			case int:
+				line = l
+			case float64:
+				line = int(l)
+			case int64:
+				line = int(l)
+			}
+		}
+		return file, line
+	}
+
+	if m, ok := r.Metrics.(map[string]interface{}); ok {
+		if f, l := checkMap(m); f != "" {
+			return f, l
+		}
+	}
+	if r.Metadata != nil {
+		if f, l := checkMap(r.Metadata); f != "" {
+			return f, l
+		}
+	}
+	return "", 0
+}
+
 // Format renders the results in SARIF v2.1.0 JSON format.
 func (f *SARIFFormatter) Format(w io.Writer, results []model.ScanResult) error {
+	SortResults(results)
+
 	ruleMap := make(map[string]int)
-	var rules []SARIFRuleEntry
-	var sarifResults []SARIFResult
+	rules := make([]sarifRule, 0)
+	sarifResults := make([]sarifResult, 0)
 
 	for _, r := range results {
-		// SARIF only records failures / security findings
-		if r.Status == model.StatusPass {
+		// SARIF only records active failures (skip PASS and SUPPRESSED)
+		if r.Status == model.StatusPass || r.Status == model.StatusSuppressed {
 			continue
 		}
 
@@ -115,15 +212,21 @@ func (f *SARIFFormatter) Format(w io.Writer, results []model.ScanResult) error {
 				desc = title
 			}
 
-			props := map[string]any{
-				"severity": string(r.Severity),
-				"category": string(r.Category),
+			tags := []string{"security"}
+			if r.Category != "" {
+				tags = append(tags, strings.ToLower(string(r.Category)))
 			}
-			if r.Remediation != "" {
-				props["remediation"] = r.Remediation
+			if len(r.Compliance) > 0 {
+				tags = append(tags, r.Compliance...)
 			}
-			if r.CostWasteMo > 0 {
-				props["cost_waste_monthly"] = r.CostWasteMo
+
+			props := &sarifRuleProperties{
+				SecuritySeverity: securitySeverityScore(r.Severity),
+				Tags:             tags,
+				Severity:         string(r.Severity),
+				Category:         string(r.Category),
+				Remediation:      r.Remediation,
+				CostWasteMo:      r.CostWasteMo,
 			}
 
 			rules = append(rules, SARIFRuleEntry{
@@ -158,10 +261,47 @@ func (f *SARIFFormatter) Format(w io.Writer, results []model.ScanResult) error {
 			msg += fmt.Sprintf("\nRemediation: %s", r.Remediation)
 		}
 
-		locationURI := r.ResourceID
-		if locationURI == "" {
-			locationURI = r.ResourceType
+		filePath, startLine := extractFileAndLine(r)
+		var loc SARIFLocation
+		if filePath != "" {
+			phys := SARIFPhysicalLocation{
+				ArtifactLocation: SARIFArtifactLocation{
+					URI: filePath,
+				},
+			}
+			if startLine > 0 {
+				phys.Region = &sarifRegion{StartLine: startLine}
+			}
+			loc = SARIFLocation{
+				PhysicalLocation: phys,
+			}
+		} else {
+			rawID := r.ResourceID
+			if rawID == "" {
+				rawID = r.ResourceType
+			}
+			relURI := strings.TrimLeft(strings.ReplaceAll(rawID, ":", "/"), "/")
+			if relURI == "" {
+				relURI = "aws-resource/unknown"
+			}
+			loc = SARIFLocation{
+				PhysicalLocation: SARIFPhysicalLocation{
+					ArtifactLocation: SARIFArtifactLocation{
+						URI: relURI,
+					},
+				},
+				LogicalLocations: []SARIFLogicalLocation{
+					{
+						Name:               rawID,
+						FullyQualifiedName: rawID,
+						Kind:               r.ResourceType,
+					},
+				},
+			}
 		}
+
+		fpSum := sha256.Sum256([]byte(r.RuleID + "|" + r.ResourceID + "|" + r.Region))
+		fpHex := hex.EncodeToString(fpSum[:])
 
 		sarifResults = append(sarifResults, SARIFResult{
 			RuleID:    r.RuleID,
@@ -170,14 +310,9 @@ func (f *SARIFFormatter) Format(w io.Writer, results []model.ScanResult) error {
 			Message: SARIFMessage{
 				Text: msg,
 			},
-			Locations: []SARIFLocation{
-				{
-					PhysicalLocation: SARIFPhysicalLocation{
-						ArtifactLocation: SARIFArtifactLocation{
-							URI: locationURI,
-						},
-					},
-				},
+			Locations: []SARIFLocation{loc},
+			PartialFingerprints: map[string]string{
+				"primaryLocationLineHash": fpHex,
 			},
 		})
 	}

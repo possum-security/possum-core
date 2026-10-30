@@ -2,6 +2,7 @@ package output
 
 import (
 	"io"
+	"sort"
 
 	"github.com/possum-security/possum-core/pkg/model"
 )
@@ -9,6 +10,28 @@ import (
 // Formatter defines the contract for rendering scan results.
 type Formatter interface {
 	Format(writer io.Writer, results []model.ScanResult) error
+}
+
+// SortResults deterministically sorts scan results in-place by:
+// SeverityLevel desc, RuleID asc, ResourceID asc, Region asc, Status asc.
+func SortResults(results []model.ScanResult) {
+	sort.Slice(results, func(i, j int) bool {
+		si := model.SeverityLevel(results[i].Severity)
+		sj := model.SeverityLevel(results[j].Severity)
+		if si != sj {
+			return si > sj
+		}
+		if results[i].RuleID != results[j].RuleID {
+			return results[i].RuleID < results[j].RuleID
+		}
+		if results[i].ResourceID != results[j].ResourceID {
+			return results[i].ResourceID < results[j].ResourceID
+		}
+		if results[i].Region != results[j].Region {
+			return results[i].Region < results[j].Region
+		}
+		return results[i].Status < results[j].Status
+	})
 }
 
 // Summary calculates statistics across a set of scan results.

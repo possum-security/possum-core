@@ -25,6 +25,7 @@ func NewHTMLFormatter() *HTMLFormatter {
 
 // Format generates an offline interactive HTML dashboard.
 func (f *HTMLFormatter) Format(writer io.Writer, results []model.ScanResult) error {
+	SortResults(results)
 	summary := CalculateSummary(results)
 
 	// Prepare JSON payload for interactive client script

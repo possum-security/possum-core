@@ -53,4 +53,30 @@ func TestConfig_DiscoverExplicit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, cfgPath, path)
 	assert.Equal(t, 8, cfg.Scan.Workers)
+	assert.Equal(t, 180, cfg.FinOps.ECRRetentionDays)
+	assert.True(t, cfg.FinOps.FlagUntaggedECR)
+}
+
+func TestConfig_RejectsUnknownFields(t *testing.T) {
+	yamlContent := `
+version: "1"
+scan:
+  unknown_key: true
+`
+	_, err := Load(strings.NewReader(yamlContent))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown_key")
+}
+
+func TestConfig_FinOpsFlagUntaggedECR(t *testing.T) {
+	yamlContent := `
+version: "1"
+finops:
+  ecr_retention_days: 60
+  flag_untagged_ecr: false
+`
+	cfg, err := Load(strings.NewReader(yamlContent))
+	require.NoError(t, err)
+	assert.Equal(t, 60, cfg.FinOps.ECRRetentionDays)
+	assert.False(t, cfg.FinOps.FlagUntaggedECR)
 }

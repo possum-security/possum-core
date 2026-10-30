@@ -20,6 +20,8 @@ func TestSeverityComparison(t *testing.T) {
 		{"Medium meets Low", SeverityMedium, SeverityLow, true},
 		{"Low meets Medium", SeverityLow, SeverityMedium, false},
 		{"Info meets High", SeverityInfo, SeverityHigh, false},
+		{"Unknown threshold never matches", SeverityCritical, "HGIH", false},
+		{"Unknown severity never matches", "HGIH", SeverityLow, false},
 	}
 
 	for _, tt := range tests {
@@ -29,6 +31,30 @@ func TestSeverityComparison(t *testing.T) {
 				t.Errorf("MeetsThreshold(%s, %s) = %v; expected %v", tt.current, tt.threshold, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestParseSeverityAndValidateScanMode(t *testing.T) {
+	if SeverityLevel("HGIH") != -1 {
+		t.Errorf("expected -1 for unknown severity, got %d", SeverityLevel("HGIH"))
+	}
+
+	for _, valid := range []string{"critical", "HIGH", "Medium", "low", "INFO"} {
+		if _, err := ParseSeverity(valid); err != nil {
+			t.Errorf("expected valid severity %q, got error: %v", valid, err)
+		}
+	}
+	if _, err := ParseSeverity("HGIH"); err == nil {
+		t.Errorf("expected error for typo severity 'HGIH'")
+	}
+
+	for _, validMode := range []string{"", "quick", "STANDARD", "Deep"} {
+		if _, err := ValidateScanMode(validMode); err != nil {
+			t.Errorf("expected valid scan mode %q, got error: %v", validMode, err)
+		}
+	}
+	if _, err := ValidateScanMode("turbo"); err == nil {
+		t.Errorf("expected error for invalid scan mode 'turbo'")
 	}
 }
 

@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -23,9 +24,28 @@ const (
 	SeverityInfo     = "INFO"
 )
 
+// ParseSeverity validates and normalizes a severity string (case-insensitive).
+func ParseSeverity(s string) (Severity, error) {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case SeverityCritical:
+		return SeverityCritical, nil
+	case SeverityHigh:
+		return SeverityHigh, nil
+	case SeverityMedium:
+		return SeverityMedium, nil
+	case SeverityLow:
+		return SeverityLow, nil
+	case SeverityInfo:
+		return SeverityInfo, nil
+	default:
+		return "", fmt.Errorf("invalid severity %q (must be one of: CRITICAL, HIGH, MEDIUM, LOW, INFO)", s)
+	}
+}
+
 // SeverityLevel returns numeric weight for severity comparison.
+// Returns -1 for unknown severities so invalid inputs never match valid findings.
 func SeverityLevel(s Severity) int {
-	switch strings.ToUpper(s) {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
 	case SeverityCritical:
 		return 5
 	case SeverityHigh:
@@ -37,13 +57,18 @@ func SeverityLevel(s Severity) int {
 	case SeverityInfo:
 		return 1
 	default:
-		return 0
+		return -1
 	}
 }
 
 // MeetsThreshold checks if severity meets or exceeds the given threshold.
 func MeetsThreshold(s, threshold Severity) bool {
-	return SeverityLevel(s) >= SeverityLevel(threshold)
+	sl := SeverityLevel(s)
+	tl := SeverityLevel(threshold)
+	if sl <= 0 || tl <= 0 {
+		return false
+	}
+	return sl >= tl
 }
 
 // Status represents the evaluation outcome of a rule.

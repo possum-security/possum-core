@@ -14,6 +14,7 @@ import (
 var (
 	diffFormat     string
 	diffOutputFile string
+	diffFailOn     string
 )
 
 var diffCmd = &cobra.Command{
@@ -26,6 +27,21 @@ new security issues, resolved findings, and net cloud waste changes.`,
 }
 
 func runDiff(cmd *cobra.Command, args []string) error {
+	switch strings.ToLower(strings.TrimSpace(diffFormat)) {
+	case "markdown-pr", "markdown", "md", "json", "table", "":
+	default:
+		return fmt.Errorf("invalid output format %q (must be one of: markdown-pr, table, json)", diffFormat)
+	}
+
+	var failThreshold model.Severity
+	if diffFailOn != "" {
+		sev, err := model.ParseSeverity(diffFailOn)
+		if err != nil {
+			return err
+		}
+		failThreshold = sev
+	}
+
 	baselinePath := args[0]
 	headPath := args[1]
 
@@ -51,14 +67,18 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		outWriter = f
 	}
 
-	switch strings.ToLower(diffFormat) {
+	switch strings.ToLower(strings.TrimSpace(diffFormat)) {
 	case "markdown-pr", "markdown", "md":
-		return report.FormatMarkdownPR(outWriter)
+		if err := report.FormatMarkdownPR(outWriter); err != nil {
+			return err
+		}
 	case "json":
 		enc := json.NewEncoder(outWriter)
 		enc.SetIndent("", "  ")
-		return enc.Encode(report)
-	default:
+		if err := enc.Encode(report); err != nil {
+			return err
+		}
+	case "table", "":
 		// Terminal summary table
 		fmt.Fprintf(outWriter, "=== Possum Scan Diff Summary ===\n")
 		fmt.Fprintf(outWriter, "Baseline: %d findings ($%.2f/mo waste)\n", report.BaselineCount, report.BaselineWaste)
@@ -82,16 +102,25 @@ func runDiff(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Fprintln(outWriter)
 		}
-
-		if len(report.NewFindings) > 0 {
-			return model.ErrThresholdExceeded
-		}
-		return nil
 	}
+
+	if len(report.NewFindings) > 0 {
+		if failThreshold != "" {
+			for _, r := range report.NewFindings {
+				if r.MeetsThreshold(failThreshold) {
+					return model.ErrThresholdExceeded
+				}
+			}
+			return nil
+		}
+		return model.ErrThresholdExceeded
+	}
+	return nil
 }
 
 func init() {
 	diffCmd.Flags().StringVarP(&diffFormat, "format", "f", "markdown-pr", "Output format: markdown-pr, table, json")
 	diffCmd.Flags().StringVarP(&diffOutputFile, "output", "o", "", "Write output to file path")
+	diffCmd.Flags().StringVar(&diffFailOn, "fail-on", "", "Fail with exit code 1 if new findings meet or exceed severity (CRITICAL, HIGH, MEDIUM, LOW, INFO)")
 	rootCmd.AddCommand(diffCmd)
 }

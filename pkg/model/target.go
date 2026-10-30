@@ -1,6 +1,9 @@
 package model
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Scope defines whether a scanner operates per-region or globally across the cloud account.
 type Scope = string
@@ -28,6 +31,20 @@ func ParseScanMode(mode string) ScanMode {
 		return ScanModeDeep
 	default:
 		return ScanModeStandard
+	}
+}
+
+// ValidateScanMode validates a mode string and returns the normalized ScanMode or an error.
+func ValidateScanMode(s string) (ScanMode, error) {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "", ScanModeStandard:
+		return ScanModeStandard, nil
+	case ScanModeQuick:
+		return ScanModeQuick, nil
+	case ScanModeDeep:
+		return ScanModeDeep, nil
+	default:
+		return "", fmt.Errorf("invalid scan mode %q (must be one of: quick, standard, deep)", s)
 	}
 }
 

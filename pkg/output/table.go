@@ -59,6 +59,7 @@ func (f *TableFormatter) severityColor(sev model.Severity) string {
 
 // Format renders the results to the writer.
 func (f *TableFormatter) Format(w io.Writer, results []model.ScanResult) error {
+	SortResults(results)
 	summary := CalculateSummary(results)
 
 	// Print findings table

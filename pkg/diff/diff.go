@@ -1,14 +1,13 @@
 package diff
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 
 	"github.com/possum-security/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/output"
 )
 
 // Report contains comparison results between a baseline scan and a head scan.
@@ -93,19 +92,9 @@ func sortFindings(findings []model.ScanResult) {
 	})
 }
 
-// LoadResultsFromFile reads ScanResult slice from a JSON scan file.
+// LoadResultsFromFile reads ScanResult slice from a JSON scan file (either JSONEnvelope or raw array).
 func LoadResultsFromFile(path string) ([]model.ScanResult, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file %s: %w", path, err)
-	}
-	defer f.Close()
-
-	var results []model.ScanResult
-	if err := json.NewDecoder(f).Decode(&results); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON from %s: %w", path, err)
-	}
-	return results, nil
+	return output.LoadResultsFromFile(path)
 }
 
 // FormatMarkdownPR renders a GitHub PR comment markdown summary.

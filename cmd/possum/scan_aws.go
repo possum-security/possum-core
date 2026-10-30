@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/possum-security/possum-core/pkg/cloudclient"
 	"github.com/possum-security/possum-core/pkg/config"
 	"github.com/possum-security/possum-core/pkg/model"
@@ -17,7 +19,6 @@ import (
 	"github.com/possum-security/possum-core/pkg/scanner"
 	scanneraws "github.com/possum-security/possum-core/pkg/scanner/aws"
 	"github.com/possum-security/possum-core/pkg/suppression"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/spf13/cobra"
 )
 
@@ -53,15 +54,52 @@ for security misconfigurations, compliance benchmarks, and cloud cost waste.`,
 	RunE: runScanAWS,
 }
 
+func validateScanFormat(format string) error {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "table", "json", "sarif", "junit", "csv", "mermaid", "html":
+		return nil
+	default:
+		return fmt.Errorf("invalid output format %q (must be one of: table, json, sarif, junit, csv, mermaid, html)", format)
+	}
+}
+
 func runScanAWS(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 
 	// 1. Discover and merge configuration file (.possum.yaml)
-	fileCfg, cfgPath, _ := config.Discover(configFile)
+	fileCfg, cfgPath, err := config.Discover(configFile)
+	if err != nil {
+		return fmt.Errorf("invalid config file: %w", err)
+	}
 	if fileCfg != nil && debug {
 		fmt.Fprintf(os.Stderr, "ℹ️ Loaded configuration from %s\n", cfgPath)
 	}
 	applyConfigFileDefaults(fileCfg, cmd)
+
+	// 1b. Validate CLI/config options before making network/AWS calls
+	var failThreshold model.Severity
+	if awsFailOn != "" {
+		sev, err := model.ParseSeverity(awsFailOn)
+		if err != nil {
+			return err
+		}
+		failThreshold = sev
+	}
+	if _, err := model.ValidateScanMode(awsMode); err != nil {
+		return err
+	}
+	if err := validateScanFormat(awsFormat); err != nil {
+		return err
+	}
+
+	ecrRetentionDays := 180
+	flagUntaggedECR := true
+	if fileCfg != nil {
+		if fileCfg.FinOps.ECRRetentionDays > 0 {
+			ecrRetentionDays = fileCfg.FinOps.ECRRetentionDays
+		}
+		flagUntaggedECR = fileCfg.FinOps.FlagUntaggedECR
+	}
 
 	// 2. Resolve primary AWS region
 	primaryRegion := awsRegion
@@ -120,6 +158,19 @@ func runScanAWS(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("no organization accounts could be accessed")
 		}
 	} else {
+		if awsAccountID == "" {
+			if ident, err := sts.NewFromConfig(baseCfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{}); err == nil && ident != nil && ident.Account != nil {
+				awsAccountID = aws.ToString(ident.Account)
+				if updatedCfg, cfgErr := scanneraws.NewClientConfig(ctx, scanneraws.ClientOptions{
+					Region:    primaryRegion,
+					Profile:   awsProfile,
+					RoleARN:   awsRoleARN,
+					AccountID: awsAccountID,
+				}); cfgErr == nil {
+					baseCfg = updatedCfg
+				}
+			}
+		}
 		targetAccounts = append(targetAccounts, AccountTarget{
 			ID:   awsAccountID,
 			Name: "Primary",
@@ -208,6 +259,12 @@ func runScanAWS(cmd *cobra.Command, args []string) error {
 		if len(filteredGlobals) > 0 {
 			filterOpts := model.FilterOptions{Checks: filterChecks}
 			rep, _ := scanEngine.ExecuteWithReport(ctx, filteredGlobals, filterOpts)
+			for i := range rep.Results {
+				if rep.Results[i].AccountID == "" {
+					rep.Results[i].AccountID = acct.ID
+				}
+				rep.Results[i].Region = scanneraws.NormalizeRegion(rep.Results[i].Region, "global")
+			}
 			reportMu.Lock()
 			allResults = append(allResults, rep.Results...)
 			allErrors = append(allErrors, rep.Errors...)
@@ -228,7 +285,7 @@ func runScanAWS(cmd *cobra.Command, args []string) error {
 				regCfg := acct.Cfg
 				regCfg.Region = regionName
 
-				regScanners := scanneraws.GetRegionalScanners(regCfg, 180, true)
+				regScanners := scanneraws.GetRegionalScanners(regCfg, ecrRetentionDays, flagUntaggedECR)
 				filteredRegional := preFilterScanners(regScanners, filterServices, filterChecks, awsMode)
 
 				if len(filteredRegional) == 0 {
@@ -237,6 +294,16 @@ func runScanAWS(cmd *cobra.Command, args []string) error {
 
 				filterOpts := model.FilterOptions{Checks: filterChecks}
 				rep, _ := scanEngine.ExecuteWithReport(ctx, filteredRegional, filterOpts)
+				for i := range rep.Results {
+					if rep.Results[i].AccountID == "" {
+						rep.Results[i].AccountID = acct.ID
+					}
+					if rep.Results[i].Region == "" || strings.EqualFold(rep.Results[i].Region, "regional") || strings.EqualFold(rep.Results[i].Region, "global") {
+						rep.Results[i].Region = regionName
+					} else {
+						rep.Results[i].Region = scanneraws.NormalizeRegion(rep.Results[i].Region, regionName)
+					}
+				}
 				reportMu.Lock()
 				allResults = append(allResults, rep.Results...)
 				allErrors = append(allErrors, rep.Errors...)
@@ -256,9 +323,6 @@ func runScanAWS(cmd *cobra.Command, args []string) error {
 		for _, err := range allErrors {
 			fmt.Fprintf(os.Stderr, "  - %v\n", err)
 		}
-		if awsFailOnError {
-			return fmt.Errorf("%w: %d scanners failed", model.ErrScannerExecution, len(allErrors))
-		}
 	}
 
 	// 11. Format & Export Results
@@ -273,13 +337,15 @@ func runScanAWS(cmd *cobra.Command, args []string) error {
 	}
 
 	var formatter output.Formatter
-	switch strings.ToLower(awsFormat) {
+	switch strings.ToLower(strings.TrimSpace(awsFormat)) {
 	case "json":
 		formatter = output.NewJSONFormatter(true)
 	case "sarif":
 		formatter = output.NewSARIFFormatter()
 	case "junit":
 		formatter = output.NewJUnitFormatter()
+	case "csv":
+		formatter = output.NewCSVFormatter()
 	case "mermaid":
 		formatter = output.NewMermaidFormatter()
 	case "html":
@@ -328,14 +394,18 @@ func runScanAWS(cmd *cobra.Command, args []string) error {
 			if err := client.UploadBundle(context.Background(), bundle); err != nil {
 				fmt.Fprintf(os.Stderr, "⚠️ Cloud synchronization error: %v\n", err)
 			} else {
-				fmt.Printf("☁️ Scan results successfully synchronized with Possum Cloud (%s).\n", apiURL)
+				fmt.Fprintf(os.Stderr, "☁️ Scan results successfully synchronized with Possum Cloud (%s).\n", apiURL)
 			}
 		}
 	}
 
+	// 12b. Return scanner execution error after report export and cloud sync if --fail-on-error is enabled
+	if len(allErrors) > 0 && awsFailOnError {
+		return fmt.Errorf("%w: %d scanners failed", model.ErrScannerExecution, len(allErrors))
+	}
+
 	// 13. Check --fail-on Threshold (Clean exit code flow: return model.ErrThresholdExceeded)
-	if awsFailOn != "" {
-		failThreshold := model.Severity(strings.ToUpper(awsFailOn))
+	if failThreshold != "" {
 		for _, r := range allResults {
 			// Suppressed findings do not count toward failure threshold
 			if r.Status == model.StatusFail && r.MeetsThreshold(failThreshold) {
@@ -445,11 +515,17 @@ func applyConfigFileDefaults(fileCfg *config.Config, cmd *cobra.Command) {
 	if !cmd.Flags().Changed("mode") && s.Mode != "" {
 		awsMode = s.Mode
 	}
-	if !cmd.Flags().Changed("format") && fileCfg.Output.Format != "" {
+	if !cmd.Flags().Changed("ignore-file") && s.IgnoreFile != "" {
+		awsIgnoreFile = s.IgnoreFile
+	}
+	if !cmd.Flags().Changed("format") && !cmd.Flags().Changed("output-format") && fileCfg.Output.Format != "" {
 		awsFormat = fileCfg.Output.Format
 	}
 	if !cmd.Flags().Changed("output") && fileCfg.Output.OutputFile != "" {
 		awsOutputFile = fileCfg.Output.OutputFile
+	}
+	if !cmd.Flags().Changed("no-color") && !rootCmd.PersistentFlags().Changed("no-color") && fileCfg.Output.NoColor {
+		noColor = fileCfg.Output.NoColor
 	}
 }
 
@@ -462,9 +538,10 @@ func init() {
 	scanAWSCmd.Flags().StringVar(&awsServices, "services", "", "Comma-separated AWS services to scan (e.g. s3,iam,ec2)")
 	scanAWSCmd.Flags().StringVar(&awsChecks, "checks", "", "Comma-separated check IDs to evaluate")
 	scanAWSCmd.Flags().StringVar(&awsCompliance, "compliance", "", "Compliance framework benchmark filter (e.g. cis-1.4, cis-3.0, pci-dss, soc2)")
-	scanAWSCmd.Flags().StringVar(&awsFailOn, "fail-on", "", "Fail with exit code 1 if findings meet or exceed severity (CRITICAL, HIGH, MEDIUM, LOW)")
+	scanAWSCmd.Flags().StringVar(&awsFailOn, "fail-on", "", "Fail with exit code 1 if findings meet or exceed severity (CRITICAL, HIGH, MEDIUM, LOW, INFO)")
 	scanAWSCmd.Flags().BoolVar(&awsFailOnError, "fail-on-error", false, "Fail with exit code 2 if any scanner encounters AWS execution errors")
-	scanAWSCmd.Flags().StringVarP(&awsFormat, "format", "f", "table", "Output format (table, json, sarif, junit, mermaid, html)")
+	scanAWSCmd.Flags().StringVarP(&awsFormat, "format", "f", "table", "Output format (table, json, sarif, junit, csv, mermaid, html)")
+	scanAWSCmd.Flags().StringVar(&awsFormat, "output-format", "table", "Output format (alias for --format)")
 	scanAWSCmd.Flags().StringVarP(&awsOutputFile, "output", "o", "", "Write scan output to specified file path")
 	scanAWSCmd.Flags().BoolVar(&awsCloudSync, "cloud", false, "Synchronize scan bundle to Possum SecaaS Platform")
 	scanAWSCmd.Flags().StringVar(&awsAPIKey, "api-key", "", "Possum SecaaS API key (or POSSUM_API_KEY env)")
@@ -474,5 +551,6 @@ func init() {
 	scanAWSCmd.Flags().DurationVar(&awsScanTimeout, "timeout", 10*time.Minute, "Maximum scan execution timeout")
 	scanAWSCmd.Flags().StringVar(&awsMode, "mode", "standard", "Scan mode: quick (lightweight only), standard (all), deep")
 	scanAWSCmd.Flags().BoolVar(&awsOrganization, "organization", false, "Discover and scan all active member accounts across AWS Organization")
+	scanAWSCmd.Flags().BoolVar(&awsOrganization, "org", false, "Discover and scan all active member accounts across AWS Organization (alias for --organization)")
 	scanAWSCmd.Flags().StringVar(&awsIgnoreFile, "ignore-file", "", "Custom path to .possumignore rule suppression file")
 }

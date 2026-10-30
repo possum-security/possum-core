@@ -52,6 +52,7 @@ func NewJUnitFormatter() *JUnitFormatter {
 
 // Format renders results into JUnit XML.
 func (f *JUnitFormatter) Format(w io.Writer, results []model.ScanResult) error {
+	SortResults(results)
 	var testCases []JUnitTestCase
 	failures := 0
 
