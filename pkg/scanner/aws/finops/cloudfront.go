@@ -18,6 +18,9 @@ type CloudFrontListAPI interface {
 	cloudfront.ListDistributionsAPIClient
 }
 
+// CloudFrontClient is an alias for CloudFrontListAPI.
+type CloudFrontClient = CloudFrontListAPI
+
 type CloudFrontScanner struct {
 	cfClient CloudFrontListAPI
 	cwClient CloudWatchMetricAPI

@@ -13,9 +13,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 )
 
+// CloudFormationClient defines the CloudFormation API subset needed by CloudFormationScanner.
+type CloudFormationClient interface {
+	DescribeStacks(ctx context.Context, params *cloudformation.DescribeStacksInput, optFns ...func(*cloudformation.Options)) (*cloudformation.DescribeStacksOutput, error)
+	ListStacks(ctx context.Context, params *cloudformation.ListStacksInput, optFns ...func(*cloudformation.Options)) (*cloudformation.ListStacksOutput, error)
+}
+
 // CloudFormationScanner detects orphaned, failed, and abandoned CloudFormation stacks.
 type CloudFormationScanner struct {
-	client *cloudformation.Client
+	client CloudFormationClient
 	region string
 }
 
@@ -26,6 +32,18 @@ func NewCloudFormationScanner(cfg aws.Config) *CloudFormationScanner {
 	return &CloudFormationScanner{
 		client: cloudformation.NewFromConfig(cfg),
 		region: cfg.Region,
+	}
+}
+
+// NewCloudFormationScannerWithClient allows injecting a custom or mock CloudFormation client.
+func NewCloudFormationScannerWithClient(cfnClient CloudFormationClient, region ...string) *CloudFormationScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &CloudFormationScanner{
+		client: cfnClient,
+		region: r,
 	}
 }
 

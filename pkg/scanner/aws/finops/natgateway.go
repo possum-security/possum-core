@@ -19,6 +19,9 @@ type NATGatewayDescribeAPI interface {
 	ec2.DescribeNatGatewaysAPIClient
 }
 
+// NATGatewayClient is an alias for NATGatewayDescribeAPI.
+type NATGatewayClient = NATGatewayDescribeAPI
+
 // NATGatewayScanner checks for idle NAT Gateways that are wasting money.
 type NATGatewayScanner struct {
 	ec2Client NATGatewayDescribeAPI

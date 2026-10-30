@@ -17,6 +17,9 @@ type RedshiftDescribeAPI interface {
 	redshift.DescribeClustersAPIClient
 }
 
+// RedshiftClient is an alias for RedshiftDescribeAPI.
+type RedshiftClient = RedshiftDescribeAPI
+
 type RedshiftScanner struct {
 	rsClient RedshiftDescribeAPI
 	cwClient CloudWatchMetricAPI

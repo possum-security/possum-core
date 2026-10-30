@@ -11,9 +11,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
+// ENIClient defines the EC2 API subset needed by ENIScanner.
+type ENIClient interface {
+	DescribeNetworkInterfaces(ctx context.Context, params *ec2.DescribeNetworkInterfacesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
+}
+
 // ENIScanner checks for detached / unattached Elastic Network Interfaces.
 type ENIScanner struct {
-	ec2Client *ec2.Client
+	ec2Client ENIClient
 	region    string
 }
 
@@ -24,6 +29,18 @@ func NewENIScanner(cfg aws.Config) *ENIScanner {
 	return &ENIScanner{
 		ec2Client: ec2.NewFromConfig(cfg),
 		region:    cfg.Region,
+	}
+}
+
+// NewENIScannerWithClient allows injecting a custom or mock EC2 client.
+func NewENIScannerWithClient(client ENIClient, region ...string) *ENIScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &ENIScanner{
+		ec2Client: client,
+		region:    r,
 	}
 }
 

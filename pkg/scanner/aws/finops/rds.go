@@ -18,6 +18,9 @@ type RDSInstanceAPI interface {
 	rds.DescribeDBInstancesAPIClient
 }
 
+// RDSClient is an alias for RDSInstanceAPI.
+type RDSClient = RDSInstanceAPI
+
 // RDSScanner checks for Zombie (no connections) and Over-provisioned RDS databases.
 type RDSScanner struct {
 	rdsClient RDSInstanceAPI

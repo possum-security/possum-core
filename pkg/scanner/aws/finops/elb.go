@@ -19,6 +19,9 @@ type ELBDescribeAPI interface {
 	elbv2.DescribeLoadBalancersAPIClient
 }
 
+// ELBClient is an alias for ELBDescribeAPI.
+type ELBClient = ELBDescribeAPI
+
 // ELBScanner checks for idle Application/Network Load Balancers that process zero traffic.
 type ELBScanner struct {
 	elbClient ELBDescribeAPI

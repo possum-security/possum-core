@@ -64,6 +64,9 @@ type EC2InstanceAPI interface {
 	ec2.DescribeInstancesAPIClient
 }
 
+// EC2Client is an alias for EC2InstanceAPI.
+type EC2Client = EC2InstanceAPI
+
 // EC2Scanner checks for Zombie and Over-provisioned EC2 instances.
 type EC2Scanner struct {
 	ec2Client EC2InstanceAPI

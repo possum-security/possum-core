@@ -19,6 +19,9 @@ type LambdaListAPI interface {
 	lambda.ListFunctionsAPIClient
 }
 
+// LambdaClient is an alias for LambdaListAPI.
+type LambdaClient = LambdaListAPI
+
 type LambdaScanner struct {
 	lambdaClient LambdaListAPI
 	cwClient     CloudWatchMetricAPI

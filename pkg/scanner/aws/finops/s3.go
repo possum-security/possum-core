@@ -13,9 +13,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+// S3Client defines the S3 API subset needed by S3Scanner.
+type S3Client interface {
+	ListBuckets(ctx context.Context, params *s3.ListBucketsInput, optFns ...func(*s3.Options)) (*s3.ListBucketsOutput, error)
+	GetBucketLifecycleConfiguration(ctx context.Context, params *s3.GetBucketLifecycleConfigurationInput, optFns ...func(*s3.Options)) (*s3.GetBucketLifecycleConfigurationOutput, error)
+}
+
 type S3Scanner struct {
-	client   *s3.Client
+	client   S3Client
 	cwClient CloudWatchMetricAPI
+	region   string
 }
 
 // Ensure S3Scanner satisfies MetaScanner at compile time.
@@ -25,6 +32,33 @@ func NewS3Scanner(cfg aws.Config) *S3Scanner {
 	return &S3Scanner{
 		client:   s3.NewFromConfig(cfg),
 		cwClient: cloudwatch.NewFromConfig(cfg),
+		region:   cfg.Region,
+	}
+}
+
+// NewS3ScannerWithClient allows injecting a custom or mock S3 client.
+func NewS3ScannerWithClient(s3Client S3Client, region ...string) *S3Scanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &S3Scanner{
+		client:   s3Client,
+		cwClient: nil,
+		region:   r,
+	}
+}
+
+// NewS3ScannerWithClients allows injecting custom S3 and CloudWatch clients.
+func NewS3ScannerWithClients(s3Client S3Client, cwClient CloudWatchMetricAPI, region ...string) *S3Scanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &S3Scanner{
+		client:   s3Client,
+		cwClient: cwClient,
+		region:   r,
 	}
 }
 

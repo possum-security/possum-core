@@ -10,9 +10,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 )
 
+// EIPClient defines the EC2 API subset needed by EIPScanner.
+type EIPClient interface {
+	DescribeAddresses(ctx context.Context, params *ec2.DescribeAddressesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
+}
+
 // EIPScanner checks for Elastic IPs that are allocated but not associated with any instance.
 type EIPScanner struct {
-	client *ec2.Client
+	client EIPClient
 	region string
 }
 
@@ -23,6 +28,18 @@ func NewEIPScanner(cfg aws.Config) *EIPScanner {
 	return &EIPScanner{
 		client: ec2.NewFromConfig(cfg),
 		region: cfg.Region,
+	}
+}
+
+// NewEIPScannerWithClient allows injecting a custom or mock EC2 client.
+func NewEIPScannerWithClient(client EIPClient, region ...string) *EIPScanner {
+	r := ""
+	if len(region) > 0 {
+		r = region[0]
+	}
+	return &EIPScanner{
+		client: client,
+		region: r,
 	}
 }
 

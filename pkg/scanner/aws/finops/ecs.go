@@ -21,6 +21,9 @@ type ECSServiceAPI interface {
 	DescribeServices(ctx context.Context, params *ecs.DescribeServicesInput, optFns ...func(*ecs.Options)) (*ecs.DescribeServicesOutput, error)
 }
 
+// ECSClient is an alias for ECSServiceAPI.
+type ECSClient = ECSServiceAPI
+
 // ECSScanner scans ECS clusters and services to detect over-utilized, under-utilized, and dormant services.
 type ECSScanner struct {
 	ecsClient ECSServiceAPI

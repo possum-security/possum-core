@@ -13,9 +13,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
 )
 
+// CostExplorerClient defines the Cost Explorer API subset needed by CostExplorerScanner.
+type CostExplorerClient interface {
+	GetCostAndUsage(ctx context.Context, params *costexplorer.GetCostAndUsageInput, optFns ...func(*costexplorer.Options)) (*costexplorer.GetCostAndUsageOutput, error)
+	GetAnomalies(ctx context.Context, params *costexplorer.GetAnomaliesInput, optFns ...func(*costexplorer.Options)) (*costexplorer.GetAnomaliesOutput, error)
+}
+
 // CostExplorerScanner fetches the AWS bill grouped by service over a given time window.
 type CostExplorerScanner struct {
-	client *costexplorer.Client
+	client CostExplorerClient
 	days   int
 }
 
@@ -28,6 +34,25 @@ func NewCostExplorerScanner(cfg aws.Config, days int) *CostExplorerScanner {
 	}
 	return &CostExplorerScanner{
 		client: costexplorer.NewFromConfig(cfg),
+		days:   days,
+	}
+}
+
+// NewCostExplorerScannerWithClient allows injecting a custom or mock Cost Explorer client.
+func NewCostExplorerScannerWithClient(ceClient CostExplorerClient, region ...string) *CostExplorerScanner {
+	return &CostExplorerScanner{
+		client: ceClient,
+		days:   30,
+	}
+}
+
+// NewCostExplorerScannerWithClientAndDays allows injecting a custom or mock Cost Explorer client with days specified.
+func NewCostExplorerScannerWithClientAndDays(ceClient CostExplorerClient, days int, region ...string) *CostExplorerScanner {
+	if days <= 0 {
+		days = 30
+	}
+	return &CostExplorerScanner{
+		client: ceClient,
 		days:   days,
 	}
 }
@@ -89,14 +114,17 @@ func (s *CostExplorerScanner) Scan(ctx context.Context) ([]scanner.ScanResult, e
 			if limit > 0 && processedCount >= limit {
 				break
 			}
-			processedCount++
 
 			dateStr := aws.ToString(resultByTime.TimePeriod.Start)
 
 			for _, group := range resultByTime.Groups {
+				if limit > 0 && processedCount >= limit {
+					break
+				}
 				if len(group.Keys) == 0 {
 					continue
 				}
+				processedCount++
 
 				serviceName := group.Keys[0]
 				costAmount := aws.ToString(group.Metrics["UnblendedCost"].Amount)

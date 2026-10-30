@@ -17,6 +17,9 @@ type DynamoDBTableAPI interface {
 	DescribeTable(ctx context.Context, params *dynamodb.DescribeTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error)
 }
 
+// DynamoDBClient is an alias for DynamoDBTableAPI.
+type DynamoDBClient = DynamoDBTableAPI
+
 type DynamoDBScanner struct {
 	ddbClient DynamoDBTableAPI
 	cwClient  CloudWatchMetricAPI
