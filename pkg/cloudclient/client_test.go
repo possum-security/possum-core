@@ -155,4 +155,3 @@ func TestPrivacyRedaction_GitEmailAndSensitiveMetadata(t *testing.T) {
 		t.Errorf("Expected DisplayName in Metrics to be preserved, got %v", metricsMap["DisplayName"])
 	}
 }
-

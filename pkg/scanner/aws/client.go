@@ -40,7 +40,8 @@ func NewClientConfig(ctx context.Context, opts ClientOptions) (aws.Config, error
 		accountKey = "default"
 	}
 
-	var baseTransport http.RoundTripper = http.DefaultTransport
+	var baseTransport http.RoundTripper
+	baseTransport = http.DefaultTransport
 	if os.Getenv("AWS_DISABLE_CACHE") != "true" {
 		baseTransport = GetSharedAWSCache().ForAccount(accountKey)
 	}

@@ -74,7 +74,7 @@ func (f *JUnitFormatter) Format(w io.Writer, results []model.ScanResult) error {
 
 			tc.Failure = &JUnitFailure{
 				Message: msg,
-				Type:    string(r.Severity),
+				Type:    r.Severity,
 				Content: details,
 			}
 		}

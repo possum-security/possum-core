@@ -163,7 +163,7 @@ func (t *AWSCacheTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			t.cache.mu.Unlock()
 		}
 
-		// Clone request with an uncancelled context so one caller cancelling does not abort
+		// Clone request with an uncancelled context so one caller canceling does not abort
 		// the shared singleflight request for other concurrent callers.
 		sfCtx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), 45*time.Second)
 		defer cancel()
@@ -300,11 +300,11 @@ func isSensitiveUncacheableRequest(req *http.Request) bool {
 }
 
 func (t *AWSCacheTransport) generateCacheKey(req *http.Request) (string, time.Duration) {
-	ttl := t.defaultTTL
+	var ttl time.Duration
+	var service string
 	host := req.URL.Host
 
 	// Multi-tier TTL policy
-	service := "generic"
 	if strings.Contains(host, "costexplorer") {
 		service = "costexplorer"
 		ttl = 12 * time.Hour

@@ -3,9 +3,9 @@ package secaas
 import (
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/possum-security/possum-core/pkg/model"
 	"github.com/possum-security/possum-core/pkg/scanner"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/assert"
 )
 

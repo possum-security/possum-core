@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/possum-security/possum-core/pkg/model"
-	"github.com/possum-security/possum-core/pkg/scanner"
-	"github.com/possum-security/possum-core/pkg/scanner/aws/finops"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
+	"github.com/possum-security/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/scanner"
+	"github.com/possum-security/possum-core/pkg/scanner/aws/finops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

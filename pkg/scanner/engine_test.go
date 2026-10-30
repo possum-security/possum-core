@@ -288,4 +288,3 @@ func TestEngineTimeoutRecordsUnstartedScanners(t *testing.T) {
 		t.Errorf("expected unstarted scanner timeout error in %v", rep.Errors)
 	}
 }
-

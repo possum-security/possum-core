@@ -343,15 +343,15 @@ type mockScanner struct {
 	meta scanner.ScannerMeta
 }
 
-func (m *mockScanner) Name() string                                    { return m.name }
+func (m *mockScanner) Name() string                                           { return m.name }
 func (m *mockScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) { return nil, nil }
-func (m *mockScanner) Meta() scanner.ScannerMeta                       { return m.meta }
+func (m *mockScanner) Meta() scanner.ScannerMeta                              { return m.meta }
 
 type basicScanner struct {
 	name string
 }
 
-func (b *basicScanner) Name() string                                    { return b.name }
+func (b *basicScanner) Name() string                                           { return b.name }
 func (b *basicScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) { return nil, nil }
 
 func TestCLI_ScannerPreFiltering(t *testing.T) {

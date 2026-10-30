@@ -361,7 +361,6 @@ func TestAWSCacheTransport_SingleflightCallerCancellationIsolation(t *testing.T)
 	wg.Wait()
 
 	if err2 != nil {
-		t.Fatalf("expected second caller to succeed despite first caller cancelling context, got: %v", err2)
+		t.Fatalf("expected second caller to succeed despite first caller canceling context, got: %v", err2)
 	}
 }
-

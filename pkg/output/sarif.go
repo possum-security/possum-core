@@ -124,7 +124,7 @@ func NewSARIFFormatter() *SARIFFormatter {
 }
 
 func securitySeverityScore(sev model.Severity) string {
-	switch strings.ToUpper(string(sev)) {
+	switch strings.ToUpper(sev) {
 	case model.SeverityCritical:
 		return "9.0"
 	case model.SeverityHigh:
@@ -214,7 +214,7 @@ func (f *SARIFFormatter) Format(w io.Writer, results []model.ScanResult) error {
 
 			tags := []string{"security"}
 			if r.Category != "" {
-				tags = append(tags, strings.ToLower(string(r.Category)))
+				tags = append(tags, strings.ToLower(r.Category))
 			}
 			if len(r.Compliance) > 0 {
 				tags = append(tags, r.Compliance...)
@@ -223,8 +223,8 @@ func (f *SARIFFormatter) Format(w io.Writer, results []model.ScanResult) error {
 			props := &sarifRuleProperties{
 				SecuritySeverity: securitySeverityScore(r.Severity),
 				Tags:             tags,
-				Severity:         string(r.Severity),
-				Category:         string(r.Category),
+				Severity:         r.Severity,
+				Category:         r.Category,
 				Remediation:      r.Remediation,
 				CostWasteMo:      r.CostWasteMo,
 			}

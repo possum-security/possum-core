@@ -180,4 +180,3 @@ suppressions:
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reason")
 }
-

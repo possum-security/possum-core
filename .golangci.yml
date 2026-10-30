@@ -24,6 +24,14 @@ linters:
       enable-all: false
     misspell:
       locale: US
+    staticcheck:
+      checks:
+        - "all"
+        - "-SA1019"
+        - "-SA1029"
+        - "-ST1000"
+        - "-ST1003"
+        - "-QF*"
 
   exclusions:
     generated: lax

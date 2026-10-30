@@ -193,9 +193,7 @@ func getVulnerabilityCounts(ctx context.Context, image ecrtypes.ImageDetail, rep
 	if digest != "" {
 		keys = append(keys, digest)
 	}
-	for _, tag := range image.ImageTags {
-		keys = append(keys, tag)
-	}
+	keys = append(keys, image.ImageTags...)
 	keys = append(keys, repoName)
 
 	contextKeys := []string{"ContainerVulnerabilities", "ImageVulnerabilities", "Vulnerabilities", "SecurityFindings", "Findings"}

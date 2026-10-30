@@ -71,11 +71,11 @@ func (f *TableFormatter) Format(w io.Writer, results []model.ScanResult) error {
 	for _, r := range results {
 		var statusStr string
 		if r.Status == model.StatusPass {
-			statusStr = f.colorize(colorGreen, string(r.Status))
+			statusStr = f.colorize(colorGreen, r.Status)
 		} else if r.Status == model.StatusSuppressed {
 			statusStr = f.colorize(colorCyan, "SUPPR")
 		} else {
-			statusStr = f.colorize(colorRed, string(r.Status))
+			statusStr = f.colorize(colorRed, r.Status)
 		}
 
 		sevColor := f.severityColor(r.Severity)

@@ -52,7 +52,7 @@ func TestCloudFormationScanner_Statuses(t *testing.T) {
 						StackId:           aws.String("arn:aws:cloudformation:us-east-1:123456789012:stack/failed-stack/2"),
 						StackName:         aws.String("failed-stack"),
 						StackStatus:       types.StackStatusCreateFailed,
-						StackStatusReason: aws.String("Resource creation cancelled"),
+						StackStatusReason: aws.String("Resource creation canceled"),
 						CreationTime:      aws.Time(recentTime),
 					},
 					{

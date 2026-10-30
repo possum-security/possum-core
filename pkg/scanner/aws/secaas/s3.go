@@ -748,11 +748,6 @@ func isConditionRestrictive(cond map[string]interface{}) bool {
 	return false
 }
 
-func isPolicyPublic(policyStr string) bool {
-	pub, _ := evaluateBucketPolicy(policyStr)
-	return pub
-}
-
 func evaluateBucketPolicy(policyStr string) (hasPublicPolicy bool, hasSecureTransportPolicy bool) {
 	var rawDoc map[string]interface{}
 	if json.Unmarshal([]byte(policyStr), &rawDoc) != nil {

@@ -97,7 +97,7 @@ func evaluateKubernetesManifest(doc map[string]interface{}, filePath, content st
 	}
 
 	resourceID := fmt.Sprintf("%s/%s", kind, metaName)
-	baseLine := 1
+	var baseLine int
 	if rootNode != nil && rootNode.Line > 0 {
 		if len(rootNode.Content) > 0 && rootNode.Content[0].Line > 0 {
 			baseLine = rootNode.Content[0].Line

@@ -45,9 +45,9 @@ func (f *CSVFormatter) Format(w io.Writer, results []model.ScanResult) error {
 		row := []string{
 			r.RuleID,
 			r.Title,
-			string(r.Severity),
-			string(r.Status),
-			string(r.Category),
+			r.Severity,
+			r.Status,
+			r.Category,
 			r.ResourceID,
 			r.ResourceType,
 			r.Region,

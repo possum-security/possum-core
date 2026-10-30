@@ -69,7 +69,7 @@ func (g *Generator) ExtractActions(results []model.ScanResult) []Action {
 }
 
 // shellQuote wraps s in single quotes and escapes any embedded single quotes
-// as '\'' so bash treats the entire value as a literal string without expansion.
+// as '\” so bash treats the entire value as a literal string without expansion.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

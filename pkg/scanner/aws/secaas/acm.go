@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	graph "github.com/possum-security/possum-core/pkg/model"
-	"github.com/possum-security/possum-core/pkg/scanner"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/acm"
 	"github.com/aws/aws-sdk-go-v2/service/acm/types"
+	graph "github.com/possum-security/possum-core/pkg/model"
+	"github.com/possum-security/possum-core/pkg/scanner"
 )
 
 type ACMScanner struct {

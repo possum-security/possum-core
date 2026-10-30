@@ -209,4 +209,3 @@ func TestThrottledTransport_HTTP400ThrottlingExceptionAndBackoffRetry(t *testing
 	assert.True(t, recent[0].Throttled, "expected HTTP 400 ThrottlingException to record Throttled=true")
 	assert.Equal(t, http.StatusOK, recent[0].StatusCode)
 }
-

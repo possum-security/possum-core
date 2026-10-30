@@ -1,7 +1,6 @@
 package iac
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -942,11 +941,6 @@ func findLineInContent(content string, needles ...string) int {
 		}
 	}
 	return 1
-}
-
-func splitYAMLDocuments(data []byte) [][]byte {
-	norm := bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
-	return bytes.Split(norm, []byte("\n---"))
 }
 
 func estimateEC2Monthly(instanceType string) float64 {

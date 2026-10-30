@@ -108,7 +108,7 @@ func (rep *Report) FormatMarkdownPR(w io.Writer) error {
 	if len(rep.NewFindings) > 0 {
 		statusEmoji = "⚠️"
 	}
-	costTrend := "neutral"
+	var costTrend string
 	if rep.NetWasteDelta > 0.01 {
 		costTrend = fmt.Sprintf("📈 +$%.2f/mo waste", rep.NetWasteDelta)
 	} else if rep.NetWasteDelta < -0.01 {

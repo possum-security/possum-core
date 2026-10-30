@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"testing"
 
-	scanneraws "github.com/possum-security/possum-core/pkg/scanner/aws"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	orgtypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	scanneraws "github.com/possum-security/possum-core/pkg/scanner/aws"
 )
 
 type mockOrganizationsAPI struct {

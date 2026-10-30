@@ -1073,6 +1073,7 @@ func TestIAMPrivilegeGovernance_ExplicitContract(t *testing.T) {
 		if adminFinding == nil {
 			t.Fatalf("expected adminUser finding")
 		}
+		_ = normalFinding
 		if adminFinding.ResourceType != "SecaaS-IAM-User" {
 			t.Errorf("expected ResourceType SecaaS-IAM-User, got %s", adminFinding.ResourceType)
 		}
@@ -1088,10 +1089,7 @@ func TestIAMPrivilegeGovernance_ExplicitContract(t *testing.T) {
 			t.Errorf("expected recommendation %q, got %q", expectedRec, rec)
 		}
 
-		if normalFinding == nil {
-			// For normalUser, mockAPI returns AdministratorAccess for both users unless differentiated.
-			// Let's verify adminUser first.
-		}
+		// Note: For normalUser, mockAPI returns AdministratorAccess for both users unless differentiated.
 	})
 
 	t.Run("iam_inline_policy_no_administrative_privileges user, role, group contracts", func(t *testing.T) {
