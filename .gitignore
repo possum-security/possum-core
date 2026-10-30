@@ -23,6 +23,7 @@ profile.out
 # OS
 .DS_Store
 Thumbs.db
+*.jpg
 
 # Claude Code local files
 .claude/settings.local.json

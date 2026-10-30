@@ -29,6 +29,13 @@ archives:
       - goos: windows
         formats: [zip]
 
+sboms:
+  - artifacts: archive
+
+signs:
+  - artifacts: checksum
+    args: ["--output-certificate=${certificate}", "--output-signature=${signature}", "${artifact}", "--yes"]
+
 brews:
   - repository:
       owner: possum-security
@@ -43,3 +50,12 @@ dockers:
       - "possumsec/possum:{{ .Version }}"
       - "possumsec/possum:latest"
     dockerfile: Dockerfile.goreleaser
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - Merge pull request
+      - Merge branch

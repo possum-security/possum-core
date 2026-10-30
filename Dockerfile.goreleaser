@@ -1,4 +1,4 @@
-FROM alpine:3.20
+FROM alpine:3.20@sha256:beefdbd8a1da20fba916c0f14500b6981349797ac40041078b1e50f2a8c520f3
 
 RUN apk add --no-cache ca-certificates git \
     && addgroup -S possum && adduser -S -G possum possum
