@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/possum-security/possum-core/pkg/model"
 	"github.com/possum-security/possum-core/pkg/output"
@@ -57,7 +58,7 @@ func runRemediate(cmd *cobra.Command, args []string) error {
 
 	outWriter := os.Stdout
 	if remediateExportFile != "" {
-		f, err := os.OpenFile(remediateExportFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		f, err := os.OpenFile(filepath.Clean(remediateExportFile), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 		if err != nil {
 			return fmt.Errorf("failed to create script file %s: %w", remediateExportFile, err)
 		}

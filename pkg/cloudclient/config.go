@@ -62,6 +62,7 @@ func SaveConfig(cfg *Config) error {
 		return fmt.Errorf("failed to create config directory %s: %w", dir, err)
 	}
 
+	// #nosec G117 -- APIKey is deliberately persisted to local client config file with 0600 permissions
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to serialize config: %w", err)
