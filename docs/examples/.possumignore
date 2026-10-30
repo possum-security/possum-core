@@ -1,0 +1,18 @@
+# Example Possum Suppression File (.possumignore)
+# Supports YAML format (below) or line-based text format:
+#   <rule_id> <resource_id_or_glob> [YYYY-MM-DD] [reason]
+
+suppressions:
+  - rule_id: s3_bucket_level_public_access_block
+    resource_id: "arn:aws:s3:::possum-public-assets-*"
+    reason: "Intentional public static assets CDN origin bucket"
+    expires_at: "2027-12-31"
+
+  - rule_id: ec2_elastic_ip_unassigned
+    resource_id: "arn:aws:ec2:us-east-1:*:elastic-ip/eipalloc-0123456789abcdef0"
+    reason: "Reserved static IP for disaster recovery failover"
+    expires_at: "2027-06-30"
+
+  - rule_id: rds_instance_multi_az
+    resource_id: "arn:aws:rds:*:*:db:staging-*"
+    reason: "Single-AZ is accepted for non-production staging databases"

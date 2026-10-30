@@ -1,0 +1,11 @@
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates git \
+    && addgroup -S possum && adduser -S -G possum possum
+
+COPY possum /usr/local/bin/possum
+
+USER possum
+
+ENTRYPOINT ["possum"]
+CMD ["--help"]

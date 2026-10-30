@@ -1,0 +1,15 @@
+# Example Custom Policy Rule for pkg/rules/custom
+id: custom_prod_s3_governance
+name: Production S3 Buckets Must Have Approved Retention and Cost Center Tags
+service: s3
+resource_type: S3
+severity: HIGH
+category: SECURITY
+mode: assert
+condition: "(resource.tags['Environment'] != 'production') || (resource.tags['Retention'] in ['90d', '365d', '7y'] && resource.tags['CostCenter'].startsWith('CC-'))"
+message: "Production S3 buckets must define an approved Retention tag (90d, 365d, 7y) and a CostCenter tag starting with 'CC-'"
+remediation: "Apply compliant Retention and CostCenter tags via Terraform or aws s3api put-bucket-tagging"
+compliance:
+  - "internal-cloud-governance-v2"
+metadata:
+  owner: "cloud-security@example.com"

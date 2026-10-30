@@ -1,0 +1,33 @@
+# Example Possum Configuration (.possum.yaml)
+# Place this file in your repository root as .possum.yaml or pass via --config
+
+version: "1.0"
+
+scan:
+  regions:
+    - us-east-1
+    - us-west-2
+  all_regions: false
+  services:
+    - s3
+    - iam
+    - ec2
+    - rds
+    - eks
+  checks: []
+  compliance: "" # e.g., cis-1.5, cis-3.0, pci-dss, soc2, hipaa
+  fail_on: HIGH
+  fail_on_error: false
+  workers: 10
+  timeout: 10m
+  mode: standard # quick | standard | deep
+  ignore_file: .possumignore
+
+output:
+  format: table # table | json | sarif | junit | csv | mermaid | html
+  output_file: ""
+  no_color: false
+
+finops:
+  ecr_retention_days: 180
+  idle_cpu_threshold: 5.0

@@ -9,24 +9,28 @@ paths: ["pkg/scanner/**", "pkg/rules/**"]
 - Provide two constructors per scanner:
   1. `New<Service>Scanner(cfg aws.Config, ...)` for production use with `aws.Config`.
   2. `New<Service>ScannerWithClient(client <Service>Client, ...)` accepting a narrow local client interface (defining only the AWS SDK methods the scanner calls) to support unit testing without live AWS calls.
-- Register new scanners in `pkg/scanner/aws/factory.go`:
-  - Regional scanners go in `GetRegionalScanners(...)` (`Scope: model.ScopeRegional`).
-  - Account-wide scanners (IAM, S3, CloudFront, CloudTrail, Route53, Account, CostExplorer) go in `GetGlobalScanners(...)` (`Scope: model.ScopeGlobal`).
+- Register new scanners in `pkg/scanner/aws/factory.go` (50 total scanners: 41 regional + 9 global):
+  - Regional scanners (13 FinOps + 28 SecaaS) go in `GetRegionalScanners(...)` (`Scope: model.ScopeRegional`).
+  - Account-wide scanners (3 FinOps + 6 SecaaS: CostExplorer, CloudFront, S3, IAM, CloudTrail, Route53, Account) go in `GetGlobalScanners(...)` (`Scope: model.ScopeGlobal`).
 
-## SecaaS vs. FinOps Scanner Conventions
+## SecaaS vs. FinOps vs. IaC Scanner Conventions
 - **SecaaS Scanners (`pkg/scanner/aws/secaas/`)**:
   - `Meta()` must set `Category: model.CategorySecOps`, valid `Service` name, `ExecutionCost` (`CostLight`, `CostMedium`, `CostHeavy`), and `CheckIDs` matching all `RuleID`s emitted by `Scan`.
   - Emit `scanner.ScanResult` for both `PASS` (`Severity: "INFO"`) and `FAIL` states, populating `Metrics["StatusExtended"]`, `Metrics["SecurityIssues"]`, `Metrics["Recommendation"]`, and graph `Nodes` / `Edges` where applicable.
 - **FinOps Scanners (`pkg/scanner/aws/finops/`)**:
   - Define canonical rule ID constants in `pkg/scanner/aws/finops/rules.go` (e.g., `RuleEIPUnassigned = "ec2_elastic_ip_unassigned"`).
   - Construct results via `BuildFinOpsResult(FinOpsResultParams{...})` in `pkg/scanner/aws/finops/rules.go`. This guarantees `Category: model.CategoryFinOps`, sets `Status: FAIL` + `CostWasteMo` when `IsOrphaned: true` (or `Status: PASS` + `CostWasteMo: 0` when `false`), and populates `Metrics["DisplayName"]`.
+- **IaC Scanners (`pkg/scanner/iac/`)**:
+  - Supports Terraform (`.tf`, `.tf.json`, `tfplan.json` with `resource_changes` and `planned_values`), CloudFormation (`.yaml`, `.yml`, `.json`), and Kubernetes manifests (`.yaml`, `.yml`, `.json`).
+  - Every IaC finding must attach `"File"` and 1-based `"Line"` (> 0) in `Metrics` (`map[string]interface{}`) and include `file:line` in `Description`.
 
-## Rule Catalog & Check ID Mapping (`pkg/rules/`)
-- `pkg/rules/embedded/embed.go` embeds `pkg/rules/embedded/index.json` via `//go:embed index.json` (`embedded.RulesFS`).
+## Rule Catalog & Custom Policy Engine (`pkg/rules/`)
+- `pkg/rules/embedded/embed.go` embeds `pkg/rules/embedded/index.json` (655 checks across 89 services) via `//go:embed index.json` (`embedded.RulesFS`).
 - `pkg/rules/catalog.go` loads `index.json` into `RuleCatalog` (`GetDefaultCatalog()`), indexing `CheckMetadata` by `check_id`.
-- Every `RuleID` emitted by a scanner and listed in `ScannerMeta.CheckIDs` must correspond to a `check_id` key in `pkg/rules/embedded/index.json` (or a canonical FinOps constant in `pkg/scanner/aws/finops/rules.go`).
+- Every `RuleID` emitted by an AWS scanner and listed in `ScannerMeta.CheckIDs` must correspond to a `check_id` key in `pkg/rules/embedded/index.json` (or a canonical FinOps constant in `pkg/scanner/aws/finops/rules.go`).
 - During `Engine.ExecuteWithReport`, `RuleCatalog.EnrichResults` automatically populates missing `Title`, `Description`, `Remediation`, `Category`, and `Compliance` fields on each `ScanResult` from `index.json`.
 - Custom JSON unmarshalers in `pkg/rules/types.go` support both `PascalCase` and `snake_case` field names in rule definitions and normalize `Severity` to uppercase.
+- `pkg/rules/custom/` provides the declarative YAML policy engine supporting expression conditions (`&&`, `||`, `and`, `or`, `!`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `in [...]`, `not in [...]`, `.contains(...)`, `.startsWith(...)`, `.endsWith(...)`, nested field/map access like `resource.tags['env']`) and structured `and`/`or`/`not` condition trees, surfacing rule compilation and evaluation errors via `ValidateRule`, `LoadRule`, `LoadDirectory`, and `Evaluate`.
 
 ## AWS Client Caching & Throttling (`pkg/scanner/aws/`)
 - Always build `aws.Config` via `NewClientConfig(ctx, ClientOptions{...})` in `pkg/scanner/aws/client.go`.
