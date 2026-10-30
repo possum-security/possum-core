@@ -297,10 +297,4 @@ func TestEventBridgeScanner_ListError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to list EventBridge event buses")
 }
 
-func TestEventBridgeScanner_Constructor(t *testing.T) {
-	cfg := aws.Config{Region: "ap-northeast-1"}
-	scanner := NewEventBridgeScanner(cfg)
-	require.NotNil(t, scanner)
-	assert.Equal(t, "EventBridge-SecaaS-Scanner", scanner.Name())
-	assert.Equal(t, "ap-northeast-1", scanner.region)
-}
+

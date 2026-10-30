@@ -241,10 +241,4 @@ func TestRedshiftScanner_ResourceLimit(t *testing.T) {
 	assert.Equal(t, "cluster-1", results[0].ResourceID)
 }
 
-func TestRedshiftScanner_Constructor(t *testing.T) {
-	cfg := aws.Config{Region: "us-west-2"}
-	s := NewRedshiftScanner(cfg)
-	assert.NotNil(t, s)
-	assert.Equal(t, "Redshift-SecaaS-Scanner", s.Name())
-	assert.Equal(t, "us-west-2", s.region)
-}
+

@@ -72,6 +72,15 @@ func NewRuleCatalog(optionalPath ...string) (*RuleCatalog, error) {
 		checksMap[checkID] = chk
 		sortedIDs = append(sortedIDs, checkID)
 	}
+
+	// Alias iam_role_admin_access to iam_role_administratoraccess_policy
+	if adminCheck, ok := checksMap["iam_role_administratoraccess_policy"]; ok {
+		aliasCheck := adminCheck
+		aliasCheck.CheckID = "iam_role_admin_access"
+		checksMap["iam_role_admin_access"] = aliasCheck
+		sortedIDs = append(sortedIDs, "iam_role_admin_access")
+	}
+
 	sort.Strings(sortedIDs)
 
 	catalog := &RuleCatalog{

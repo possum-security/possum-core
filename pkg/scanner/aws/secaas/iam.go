@@ -1070,15 +1070,56 @@ func (s *IAMScanner) Scan(ctx context.Context) ([]scanner.ScanResult, error) {
 				}
 			}
 
-			// Check for AWSSupportAccess policy attached
+			// Check for AWSSupportAccess and AdministratorAccess attached policies
+			roleHasAdminAccess := false
 			attachedRolePols, polErr := s.client.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{RoleName: role.RoleName})
 			if polErr == nil && attachedRolePols != nil {
 				for _, p := range attachedRolePols.AttachedPolicies {
+					pName := aws.ToString(p.PolicyName)
 					pArn := aws.ToString(p.PolicyArn)
 					if strings.Contains(pArn, "AWSSupportAccess") {
 						hasSupportRole = true
 					}
+					if pName == "AdministratorAccess" || strings.HasSuffix(pArn, "/AdministratorAccess") || strings.Contains(pArn, "AdministratorAccess") {
+						roleHasAdminAccess = true
+					}
 				}
+			}
+
+			// iam_role_admin_access (Severity: CRITICAL)
+			if roleHasAdminAccess {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   roleName,
+					ResourceType: "SecaaS-IAM-Role",
+					Region:       "global",
+					Status:       "FAIL",
+					IsOrphaned:   false,
+					RuleID:       "iam_role_admin_access",
+					Severity:     "CRITICAL",
+					Metrics: map[string]interface{}{
+						"RoleName":       roleName,
+						"StatusExtended": fmt.Sprintf("IAM role %s has AdministratorAccess policy attached.", roleName),
+						"SecurityIssues": []string{"AdministratorAccess policy attached to IAM role"},
+						"Recommendation": "Detach AdministratorAccess and use scoped least-privilege IAM policies instead.",
+					},
+					Nodes: []graph.Node{{ID: roleName, NodeType: "SecaaS-IAM-Role"}},
+				})
+			} else {
+				results = append(results, scanner.ScanResult{
+					ResourceID:   roleName,
+					ResourceType: "SecaaS-IAM-Role",
+					Region:       "global",
+					Status:       "PASS",
+					IsOrphaned:   false,
+					RuleID:       "iam_role_admin_access",
+					Severity:     "INFO",
+					Metrics: map[string]interface{}{
+						"RoleName":       roleName,
+						"StatusExtended": fmt.Sprintf("IAM role %s does not have AdministratorAccess policy attached.", roleName),
+						"Recommendation": "Detach AdministratorAccess and use scoped least-privilege IAM policies instead.",
+					},
+					Nodes: []graph.Node{{ID: roleName, NodeType: "SecaaS-IAM-Role"}},
+				})
 			}
 
 			// iam_role_unused (Severity: LOW)
@@ -1581,6 +1622,6 @@ func (s *IAMScanner) Meta() scanner.ScannerMeta {
 		Scope:         graph.ScopeGlobal,
 		ExecutionCost: scanner.CostMedium,
 		Service:       "iam",
-		CheckIDs:      []string{"iam_avoid_root_usage", "iam_aws_attached_policy_no_administrative_privileges", "iam_check_saml_providers_sts", "iam_customer_attached_policy_no_administrative_privileges", "iam_inline_policy_no_administrative_privileges", "iam_no_expired_server_certificates_stored", "iam_no_root_access_key", "iam_password_policy_minimum_length_14", "iam_password_policy_reuse_24", "iam_policy_allows_privilege_escalation", "iam_policy_attached_only_to_group_or_roles", "iam_role_cross_account_readonlyaccess_policy", "iam_role_unused", "iam_root_hardware_mfa_enabled", "iam_root_mfa_enabled", "iam_rotate_access_key_90_days", "iam_support_role_created", "iam_user_accesskey_unused", "iam_user_administrator_access_policy", "iam_user_console_access_unused", "iam_user_mfa_enabled_console_access", "iam_user_no_setup_initial_access_key", "iam_user_two_active_access_key"},
+		CheckIDs:      []string{"iam_avoid_root_usage", "iam_aws_attached_policy_no_administrative_privileges", "iam_check_saml_providers_sts", "iam_customer_attached_policy_no_administrative_privileges", "iam_inline_policy_no_administrative_privileges", "iam_no_expired_server_certificates_stored", "iam_no_root_access_key", "iam_password_policy_minimum_length_14", "iam_password_policy_reuse_24", "iam_policy_allows_privilege_escalation", "iam_policy_attached_only_to_group_or_roles", "iam_role_admin_access", "iam_role_cross_account_readonlyaccess_policy", "iam_role_unused", "iam_root_hardware_mfa_enabled", "iam_root_mfa_enabled", "iam_rotate_access_key_90_days", "iam_support_role_created", "iam_user_accesskey_unused", "iam_user_administrator_access_policy", "iam_user_console_access_unused", "iam_user_mfa_enabled_console_access", "iam_user_no_setup_initial_access_key", "iam_user_two_active_access_key"},
 	}
 }

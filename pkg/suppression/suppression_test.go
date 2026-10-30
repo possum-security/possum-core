@@ -1,6 +1,8 @@
 package suppression
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -180,3 +182,124 @@ suppressions:
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reason")
 }
+
+func TestSuppression_YAMLArrayList(t *testing.T) {
+	yamlList := `
+- rule_id: "iam_root_mfa"
+  resource_id: "*"
+  reason: "Root account isolated"
+`
+	loader := NewLoader()
+	supps, err := loader.Load(strings.NewReader(yamlList))
+	require.NoError(t, err)
+	require.Len(t, supps, 1)
+	assert.Equal(t, "iam_root_mfa", supps[0].RuleID)
+}
+
+func TestSuppression_EmptyInput(t *testing.T) {
+	loader := NewLoader()
+	supps, err := loader.Load(strings.NewReader("   \n\t"))
+	require.NoError(t, err)
+	assert.Empty(t, supps)
+}
+
+func TestSuppression_FileLoadingAndDiscovery(t *testing.T) {
+	loader := NewLoader()
+	tmpDir := t.TempDir()
+
+	// 1. LoadFile valid
+	validFile := filepath.Join(tmpDir, ".possumignore")
+	require.NoError(t, os.WriteFile(validFile, []byte("s3_public * 2030-01-01 Test exception\n"), 0600))
+	supps, err := loader.LoadFile(validFile)
+	require.NoError(t, err)
+	require.Len(t, supps, 1)
+
+	// 2. LoadFile missing
+	_, err = loader.LoadFile(filepath.Join(tmpDir, "nonexistent"))
+	require.Error(t, err)
+
+	// 3. DiscoverAndLoad found
+	foundSupps, path, err := loader.DiscoverAndLoad(tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, validFile, path)
+	assert.Len(t, foundSupps, 1)
+
+	// 4. DiscoverAndLoad empty directory
+	emptyDir := filepath.Join(tmpDir, "empty")
+	require.NoError(t, os.Mkdir(emptyDir, 0700))
+	noneSupps, emptyPath, err := loader.DiscoverAndLoad(emptyDir)
+	require.NoError(t, err)
+	assert.Empty(t, emptyPath)
+	assert.Empty(t, noneSupps)
+}
+
+func TestSuppression_DatetimeFormats(t *testing.T) {
+	// RFC3339 format
+	supp1 := Suppression{
+		RuleID:     "rule_1",
+		ResourceID: "*",
+		Reason:     "RFC3339 expiry",
+		ExpiresAt:  "2030-01-01T12:00:00Z",
+	}
+	exp1, err := supp1.ParseExpiry()
+	require.NoError(t, err)
+	assert.Equal(t, 2030, exp1.Year())
+
+	// Datetime format "2006-01-02 15:04:05"
+	supp2 := Suppression{
+		RuleID:     "rule_2",
+		ResourceID: "*",
+		Reason:     "DateTime format",
+		ExpiresAt:  "2030-05-20 18:30:00",
+	}
+	exp2, err := supp2.ParseExpiry()
+	require.NoError(t, err)
+	assert.Equal(t, 2030, exp2.Year())
+	assert.Equal(t, time.May, exp2.Month())
+}
+
+func TestSuppression_PassStatusSkipped(t *testing.T) {
+	passResult := model.ScanResult{
+		RuleID:     "s3_bucket_level_public_access_block",
+		ResourceID: "my-secure-bucket",
+		Status:     model.StatusPass,
+	}
+
+	supp := Suppression{
+		RuleID:     "s3_bucket_level_public_access_block",
+		ResourceID: "*",
+		Reason:     "Should not apply to PASS findings",
+	}
+
+	results := ApplySuppressionsAt([]model.ScanResult{passResult}, []Suppression{supp}, time.Now())
+	assert.Equal(t, model.StatusPass, results[0].Status)
+	assert.Empty(t, results[0].SuppressedReason)
+}
+
+func TestSuppression_MetadataDisplayNameAndGlobSlash(t *testing.T) {
+	// Metadata display name
+	res := model.ScanResult{
+		RuleID:     "test_rule",
+		ResourceID: "arn:aws:iam::123456789012:role/service-role/my-role",
+		Status:     model.StatusFail,
+		Metadata: map[string]interface{}{
+			"display_name": "friendly-role-name",
+		},
+	}
+
+	suppByDisplayName := Suppression{
+		RuleID:     "test_rule",
+		ResourceID: "friendly-role-name",
+		Reason:     "Match by metadata display_name",
+	}
+	assert.True(t, suppByDisplayName.Matches(res))
+
+	// Glob matching across slashes
+	suppGlobSlash := Suppression{
+		RuleID:     "test_rule",
+		ResourceID: "*service-role*",
+		Reason:     "Match wildcard inside path",
+	}
+	assert.True(t, suppGlobSlash.Matches(res))
+}
+

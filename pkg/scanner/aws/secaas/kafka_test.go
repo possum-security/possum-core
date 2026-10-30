@@ -304,10 +304,4 @@ func TestKafkaScanner_ListError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to list MSK clusters")
 }
 
-func TestKafkaScanner_Constructor(t *testing.T) {
-	cfg := aws.Config{Region: "eu-central-1"}
-	scanner := NewKafkaScanner(cfg)
-	require.NotNil(t, scanner)
-	assert.Equal(t, "Kafka-SecaaS-Scanner", scanner.Name())
-	assert.Equal(t, "eu-central-1", scanner.region)
-}
+

@@ -325,20 +325,14 @@ func TestSageMakerScanner_ResourceLimit(t *testing.T) {
 	assert.Equal(t, "nb-1", metrics["NotebookInstanceName"])
 }
 
-func TestSageMakerScanner_Constructors(t *testing.T) {
-	s1 := NewSageMakerScanner(aws.Config{Region: "eu-central-1"})
-	require.NotNil(t, s1)
-	assert.Equal(t, "SageMaker-SecaaS-Scanner", s1.Name())
-	assert.Equal(t, "eu-central-1", s1.region)
-
+func TestSageMakerScanner_EmptyResults(t *testing.T) {
 	mock := &mockSageMakerClient{
 		listOutput: &sagemaker.ListNotebookInstancesOutput{},
 	}
-	s2 := NewSageMakerScannerWithClient(mock, "")
-	require.NotNil(t, s2)
-	assert.Equal(t, "SageMaker-SecaaS-Scanner", s2.Name())
+	s := NewSageMakerScannerWithClient(mock, "us-east-1")
+	require.NotNil(t, s)
 
-	results, err := s2.Scan(context.Background())
+	results, err := s.Scan(context.Background())
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }

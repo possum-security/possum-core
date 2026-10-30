@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
@@ -92,4 +93,20 @@ func NewClientConfig(ctx context.Context, opts ClientOptions) (aws.Config, error
 	}
 
 	return cfg, nil
+}
+
+// S3UsePathStyleOption returns an S3 options modifier that sets UsePathStyle = true
+// if AWS_S3_USE_PATH_STYLE="true" or AWS_ENDPOINT_URL is set (useful for LocalStack).
+func S3UsePathStyleOption() func(*s3.Options) {
+	return func(o *s3.Options) {
+		if os.Getenv("AWS_S3_USE_PATH_STYLE") == "true" || os.Getenv("AWS_ENDPOINT_URL") != "" {
+			o.UsePathStyle = true
+		}
+	}
+}
+
+// NewS3Client creates an S3 client from aws.Config with path-style addressing support for LocalStack/custom endpoints.
+func NewS3Client(cfg aws.Config, optFns ...func(*s3.Options)) *s3.Client {
+	opts := append([]func(*s3.Options){S3UsePathStyleOption()}, optFns...)
+	return s3.NewFromConfig(cfg, opts...)
 }

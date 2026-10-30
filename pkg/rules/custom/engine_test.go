@@ -252,3 +252,127 @@ condition: "resource.tags['env] == 'prod'"
 		assert.Equal(t, "custom_prod_s3_governance", exRule.ID)
 	}
 }
+
+func TestEngine_OperatorsAndStructuredNodes(t *testing.T) {
+	rule := Rule{
+		ID:           "test_operators",
+		ResourceType: "*",
+		Severity:     model.SeverityHigh,
+		Conditions: &StructuredCondition{
+			And: []*ConditionNode{
+				{Field: "tags.Name", Op: "startswith", Value: "prod-"},
+				{Field: "tags.Name", Op: "endswith", Value: "-app"},
+				{Field: "tags.Name", Op: "contains", Value: "web"},
+				{Field: "tags.Environment", Op: "in", Value: []interface{}{"prod", "production"}},
+				{Field: "tags.Tier", Op: "not_in", Value: []interface{}{"deprecated", "legacy"}},
+				{Field: "tags.Owner", Op: "exists"},
+				{Field: "tags.EmptyField", Op: "empty"},
+				{Field: "Properties.Size", Op: ">", Value: 10},
+				{Field: "Properties.Size", Op: "<=", Value: 50},
+			},
+		},
+	}
+
+	require.NoError(t, ValidateRule(rule))
+	engine := NewEngine(rule)
+
+	// Context matching all conditions
+	matchingCtx := ResourceContext{
+		ResourceID:   "res-1",
+		ResourceType: "AWS::EC2::Instance",
+		Tags: map[string]string{
+			"Name":        "prod-web-app",
+			"Environment": "production",
+			"Tier":        "frontend",
+			"Owner":       "secops",
+			"EmptyField":  "",
+		},
+		Properties: map[string]interface{}{
+			"Size": 25,
+		},
+	}
+	findings := engine.EvaluateContext(matchingCtx)
+	assert.Empty(t, findings) // Compliant (no violation)
+
+	// Context failing one condition
+	nonMatchingCtx := matchingCtx
+	nonMatchingCtx.Tags = map[string]string{
+		"Name": "dev-db",
+	}
+	findingsBad := engine.EvaluateContext(nonMatchingCtx)
+	assert.Len(t, findingsBad, 1) // Violation detected
+}
+
+func TestEngine_StructuredCondition_OrAndNot(t *testing.T) {
+	rule := Rule{
+		ID:           "test_or_not",
+		ResourceType: "S3",
+		Severity:     model.SeverityCritical,
+		Conditions: &StructuredCondition{
+			Or: []*ConditionNode{
+				{Field: "tags.Environment", Op: "==", Value: "sandbox"},
+				{
+					Not: &ConditionNode{
+						Field: "tags.Encrypted",
+						Op:    "==",
+						Value: "false",
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, ValidateRule(rule))
+	engine := NewEngine(rule)
+
+	// Sandbox environment -> passes OR branch 1
+	resSandbox := engine.EvaluateContext(ResourceContext{
+		ResourceID:   "b-sandbox",
+		ResourceType: "S3",
+		Tags:         map[string]string{"Environment": "sandbox", "Encrypted": "false"},
+	})
+	assert.Empty(t, resSandbox)
+
+	// Encrypted != false -> passes NOT branch
+	resEncrypted := engine.EvaluateContext(ResourceContext{
+		ResourceID:   "b-prod",
+		ResourceType: "S3",
+		Tags:         map[string]string{"Environment": "prod", "Encrypted": "true"},
+	})
+	assert.Empty(t, resEncrypted)
+
+	// Prod + unencrypted -> fails both
+	resBad := engine.EvaluateContext(ResourceContext{
+		ResourceID:   "b-bad",
+		ResourceType: "S3",
+		Tags:         map[string]string{"Environment": "prod", "Encrypted": "false"},
+	})
+	assert.Len(t, resBad, 1)
+}
+
+func TestEngine_ValidationErrorsAndEdgeCases(t *testing.T) {
+	// Unknown operator
+	badOpRule := Rule{
+		ID: "bad_op",
+		Conditions: &StructuredCondition{
+			And: []*ConditionNode{
+				{Field: "tags.Owner", Op: "unsupported_operator"},
+			},
+		},
+	}
+	require.Error(t, ValidateRule(badOpRule))
+
+	// Nil node
+	nilNodeRule := Rule{
+		ID: "nil_node",
+		Conditions: &StructuredCondition{
+			And: []*ConditionNode{nil},
+		},
+	}
+	require.Error(t, ValidateRule(nilNodeRule))
+
+	// LoadDirectory on non-existent directory
+	engine := NewEngine()
+	_, err := engine.LoadDirectory("/non/existent/path/123456")
+	require.Error(t, err)
+}
+

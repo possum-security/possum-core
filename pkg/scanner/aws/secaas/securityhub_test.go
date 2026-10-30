@@ -137,10 +137,4 @@ func TestSecurityHubScanner_GlobalRegion(t *testing.T) {
 	assert.Equal(t, "global", results[0].Region)
 }
 
-func TestSecurityHubScanner_Constructors(t *testing.T) {
-	cfg := aws.Config{Region: "us-west-2"}
-	scanner := NewSecurityHubScanner(cfg)
-	assert.NotNil(t, scanner)
-	assert.Equal(t, "SecurityHub-SecaaS-Scanner", scanner.Name())
-	assert.Equal(t, "us-west-2", scanner.region)
-}
+

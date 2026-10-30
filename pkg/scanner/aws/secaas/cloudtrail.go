@@ -3,6 +3,7 @@ package secaas
 import (
 	"context"
 	"fmt"
+	"os"
 
 	graph "github.com/possum-security/possum-core/pkg/model"
 	"github.com/possum-security/possum-core/pkg/scanner"
@@ -32,8 +33,12 @@ type CloudTrailScanner struct {
 
 func NewCloudTrailScanner(cfg aws.Config) *CloudTrailScanner {
 	return &CloudTrailScanner{
-		client:   cloudtrail.NewFromConfig(cfg),
-		s3Client: s3.NewFromConfig(cfg),
+		client: cloudtrail.NewFromConfig(cfg),
+		s3Client: s3.NewFromConfig(cfg, func(o *s3.Options) {
+			if os.Getenv("AWS_S3_USE_PATH_STYLE") == "true" || os.Getenv("AWS_ENDPOINT_URL") != "" {
+				o.UsePathStyle = true
+			}
+		}),
 	}
 }
 

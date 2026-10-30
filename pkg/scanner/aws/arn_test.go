@@ -141,3 +141,18 @@ func TestARN_StandardizeResultARN_PreservesAndNormalizesAccountAndRegion(t *test
 	assert.Equal(t, "eu-west-1", rdsRes.Region)
 	assert.Equal(t, "arn:aws:rds:eu-west-1:777788889999:db:prod-mysql", rdsRes.ResourceID)
 }
+
+func TestARN_StandardizeResultsARN(t *testing.T) {
+	results := []model.ScanResult{
+		{
+			ResourceID:   "vol-12345",
+			ResourceType: "AWS::EC2::Volume",
+			Region:       "us-east-1",
+			RuleID:       "ebs_volume_unused_attached",
+		},
+	}
+	standardized := StandardizeResultsARN(results, "123456789012", "us-east-1")
+	assert.Equal(t, "123456789012", standardized[0].AccountID)
+	assert.Equal(t, "arn:aws:ec2:us-east-1:123456789012:volume/vol-12345", standardized[0].ResourceID)
+}
+

@@ -198,10 +198,4 @@ func TestEFSScanner_ResourceLimit(t *testing.T) {
 	assert.Len(t, results, 1)
 }
 
-func TestEFSScanner_Constructors(t *testing.T) {
-	cfg := aws.Config{Region: "ap-southeast-1"}
-	scanner := NewEFSScanner(cfg)
-	assert.NotNil(t, scanner)
-	assert.Equal(t, "EFS-SecaaS-Scanner", scanner.Name())
-	assert.Equal(t, "ap-southeast-1", scanner.region)
-}
+

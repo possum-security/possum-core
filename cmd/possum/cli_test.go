@@ -927,3 +927,32 @@ output:
 	require.NoError(t, readErr)
 	assert.Contains(t, string(csvData), "custom_s3_prod_tag")
 }
+
+func TestCLI_ScanAWS_ValidationErrors(t *testing.T) {
+	// 1. Invalid FailOn
+	resetFlagsForTest()
+	rootCmd.SetArgs([]string{"scan", "aws", "--fail-on", "INVALID_SEVERITY"})
+	err := rootCmd.Execute()
+	require.Error(t, err)
+
+	// 2. Invalid Scan Mode
+	resetFlagsForTest()
+	rootCmd.SetArgs([]string{"scan", "aws", "--mode", "turbo_invalid"})
+	err = rootCmd.Execute()
+	require.Error(t, err)
+
+	// 3. Invalid Output Format
+	resetFlagsForTest()
+	rootCmd.SetArgs([]string{"scan", "aws", "--format", "unsupported_xyz"})
+	err = rootCmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid output format")
+
+	// 4. Missing / Invalid Config File
+	resetFlagsForTest()
+	rootCmd.SetArgs([]string{"scan", "aws", "--config", "/nonexistent/possum/config.yaml"})
+	err = rootCmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid config file")
+}
+

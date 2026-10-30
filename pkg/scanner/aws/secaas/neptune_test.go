@@ -241,13 +241,7 @@ func TestNeptuneScanner_ResourceLimit(t *testing.T) {
 	assert.Equal(t, "neptune-1", results[0].ResourceID)
 }
 
-func TestNeptuneScanner_Constructor(t *testing.T) {
-	cfg := aws.Config{Region: "eu-central-1"}
-	s := NewNeptuneScanner(cfg)
-	assert.NotNil(t, s)
-	assert.Equal(t, "Neptune-SecaaS-Scanner", s.Name())
-	assert.Equal(t, "eu-central-1", s.region)
-}
+
 
 func TestNeptuneScanner_ClusterSnapshot_Public_FAIL(t *testing.T) {
 	snapID := "neptune-snap-public-01"

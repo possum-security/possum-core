@@ -13,6 +13,13 @@ jobs:
   test:
     name: Build & Test
     runs-on: ubuntu-latest
+    services:
+      localstack:
+        image: localstack/localstack:latest
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: s3,iam,ec2
     steps:
       - name: Checkout Code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -52,6 +59,26 @@ jobs:
           COVERAGE=$(go tool cover -func=coverage.out | awk '/total:/ {print $NF}' | tr -d '%')
           echo "Total Statement Coverage: ${COVERAGE}%"
           awk -v cov="$COVERAGE" -v min="60.0" 'BEGIN { if (cov < min) { printf "Statement coverage %.1f%% is below threshold %.1f%%\n", cov, min; exit 1 } else { printf "Statement coverage gate passed: %.1f%% >= %.1f%%\n", cov, min } }'
+
+      - name: Wait for LocalStack
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:4566/_localstack/health | grep -q '"available"'; then
+              echo "LocalStack is ready"
+              break
+            fi
+            echo "Waiting for LocalStack..."
+            sleep 2
+          done
+
+      - name: Run Integration Tests (LocalStack)
+        env:
+          AWS_ENDPOINT_URL: http://localhost:4566
+          AWS_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_S3_USE_PATH_STYLE: "true"
+        run: go test -v -tags=integration ./tests/integration/...
 
       - name: Build Binary
         run: go build -o bin/possum ./cmd/possum

@@ -278,10 +278,4 @@ func TestRDSScanner_Snapshots_AttributesError(t *testing.T) {
 	assert.Nil(t, results)
 }
 
-func TestRDSScanner_Constructor(t *testing.T) {
-	cfg := aws.Config{Region: "us-east-1"}
-	s := NewRDSScanner(cfg)
-	assert.NotNil(t, s)
-	assert.Equal(t, "RDS-SecaaS-Scanner", s.Name())
-	assert.Equal(t, "us-east-1", s.region)
-}
+

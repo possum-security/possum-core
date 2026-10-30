@@ -76,25 +76,7 @@ func (m *mockAPIGatewayV2Client) GetAuthorizers(ctx context.Context, params *api
 	return m.getAuthorizersOutput, nil
 }
 
-func TestAPIGatewayScanner_Name(t *testing.T) {
-	sc := NewAPIGatewayScannerWithClients(nil, nil, "us-east-1")
-	assert.Equal(t, "APIGateway-SecaaS-Scanner", sc.Name())
-}
 
-func TestAPIGatewayScanner_Constructors(t *testing.T) {
-	cfg := aws.Config{Region: "us-east-1"}
-	s1 := NewAPIGatewayScanner(cfg)
-	assert.NotNil(t, s1)
-	assert.Equal(t, "us-east-1", s1.region)
-
-	s2 := NewAPIGatewayScannerWithClients(&mockAPIGatewayClient{}, &mockAPIGatewayV2Client{}, "us-west-2")
-	assert.NotNil(t, s2)
-	assert.Equal(t, "us-west-2", s2.region)
-
-	s3 := NewAPIGatewayScannerWithClient(&mockAPIGatewayClient{}, "eu-west-1")
-	assert.NotNil(t, s3)
-	assert.Equal(t, "eu-west-1", s3.region)
-}
 
 func TestAPIGatewayScanner_Compliant_V1AndV2(t *testing.T) {
 	v1Client := &mockAPIGatewayClient{

@@ -6,7 +6,7 @@ LDFLAGS=-s -w -X github.com/possum-security/possum-core/pkg/version.Version=$(VE
               -X github.com/possum-security/possum-core/pkg/version.GitCommit=$(COMMIT) \
               -X github.com/possum-security/possum-core/pkg/version.BuildDate=$(BUILD_TIME)
 
-.PHONY: all build clean test lint install
+.PHONY: all build clean test test-integration lint install
 
 all: test build
 
@@ -15,6 +15,9 @@ build:
 
 test:
 	go test -v -race ./...
+
+test-integration:
+	go test -v -tags=integration ./tests/integration/...
 
 lint:
 	golangci-lint run ./...

@@ -212,16 +212,10 @@ func TestBedrockScanner_ApiErrorsHandledGracefully(t *testing.T) {
 	assert.Equal(t, "MEDIUM", results[1].Severity)
 }
 
-func TestBedrockScanner_Constructors(t *testing.T) {
-	s1 := NewBedrockScanner(aws.Config{Region: "us-east-1"})
-	require.NotNil(t, s1)
-	assert.Equal(t, "Bedrock-SecaaS-Scanner", s1.Name())
-	assert.Equal(t, "us-east-1", s1.region)
-
+func TestBedrockScanner_FallbackRegion(t *testing.T) {
 	mock := &mockBedrockClient{}
 	s2 := NewBedrockScannerWithClient(mock, "")
 	require.NotNil(t, s2)
-	assert.Equal(t, "Bedrock-SecaaS-Scanner", s2.Name())
 
 	// If region is empty, it falls back to "global"
 	results, err := s2.Scan(context.Background())

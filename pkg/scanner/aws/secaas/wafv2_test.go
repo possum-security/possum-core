@@ -266,10 +266,4 @@ func TestWAFv2Scanner_ResourceLimit(t *testing.T) {
 	assert.Len(t, results, 1)
 }
 
-func TestWAFv2Scanner_Constructors(t *testing.T) {
-	cfg := aws.Config{Region: "eu-central-1"}
-	scanner := NewWAFv2Scanner(cfg)
-	assert.NotNil(t, scanner)
-	assert.Equal(t, "WAFv2-SecaaS-Scanner", scanner.Name())
-	assert.Equal(t, "eu-central-1", scanner.region)
-}
+

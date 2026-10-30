@@ -2,6 +2,7 @@ package finops
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/possum-security/possum-core/pkg/model"
@@ -30,7 +31,11 @@ var _ scanner.MetaScanner = (*S3Scanner)(nil)
 
 func NewS3Scanner(cfg aws.Config) *S3Scanner {
 	return &S3Scanner{
-		client:   s3.NewFromConfig(cfg),
+		client: s3.NewFromConfig(cfg, func(o *s3.Options) {
+			if os.Getenv("AWS_S3_USE_PATH_STYLE") == "true" || os.Getenv("AWS_ENDPOINT_URL") != "" {
+				o.UsePathStyle = true
+			}
+		}),
 		cwClient: cloudwatch.NewFromConfig(cfg),
 		region:   cfg.Region,
 	}
