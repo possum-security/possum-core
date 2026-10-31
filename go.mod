@@ -15,7 +15,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/backup v1.69.2
 	github.com/aws/aws-sdk-go-v2/service/bedrock v1.74.0
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.82.1
-	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.75.0
+	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.75.1
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.65.5
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.75.0
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.90.1
